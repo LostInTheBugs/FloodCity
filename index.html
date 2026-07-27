@@ -134,7 +134,7 @@ const $mode = document.getElementById('mode-indicator');
 // ─── Three.js setup ─────────────────────────────────────────
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 40, 90);
+scene.fog = new THREE.Fog(0x8ab4e0, 35, 80);
 
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.5, 150);
 camera.position.set(22, 18, 28);
@@ -195,23 +195,32 @@ const hemi = new THREE.HemisphereLight(0x87ceeb, 0x3d5a3d, 0.6);
 scene.add(hemi);
 
 // ─── Ground ─────────────────────────────────────────────────
-const groundGeo = new THREE.PlaneGeometry(40, 40);
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x5a8f3c, roughness: 0.9 });
+const groundGeo = new THREE.PlaneGeometry(TERRAIN_HALF * 2 + 6, TERRAIN_HALF * 2 + 6);
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x6b9e45, roughness: 0.85 });
 const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
 
 // Grid helper for orientation
-const grid = new THREE.GridHelper(40, 20, 0x3d6b2e, 0x4a7a35);
+const grid = new THREE.GridHelper(TERRAIN_HALF * 2, TERRAIN_HALF, 0x3d6b2e, 0x4a7a35);
 grid.position.y = 0.01;
 scene.add(grid);
 
 // ─── Ocean ──────────────────────────────────────────────────
-const oceanGeo = new THREE.PlaneGeometry(44, 12, 40, 12);
+// Large static ocean (invisible edges)
+const farOceanGeo = new THREE.PlaneGeometry(200, 200);
+const farOceanMat = new THREE.MeshStandardMaterial({ color: 0x1155aa, roughness: 0.15, metalness: 0.8 });
+const farOcean = new THREE.Mesh(farOceanGeo, farOceanMat);
+farOcean.rotation.x = -Math.PI / 2;
+farOcean.position.set(0, 0.04, -30);
+scene.add(farOcean);
+
+// Animated near ocean
+const oceanGeo = new THREE.PlaneGeometry(48, 14, 48, 14);
 const oceanMat = new THREE.MeshStandardMaterial({
-  color: 0x1a5c8a, roughness: 0.3, metalness: 0.6,
-  transparent: true, opacity: 0.85
+  color: 0x1565a8, roughness: 0.2, metalness: 0.7,
+  transparent: true, opacity: 0.88
 });
 const ocean = new THREE.Mesh(oceanGeo, oceanMat);
 ocean.rotation.x = -Math.PI / 2;
@@ -344,14 +353,16 @@ function createBuilding(x, z, w, d, h, color) {
   // Roof
   const roofH = 0.15 + h * 0.05;
   const roofGeo = new THREE.BoxGeometry(w + 0.15, roofH, d + 0.15);
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0x5a4a3a, roughness: 0.5, metalness: 0.1 });
+  const roofColors = [0x5a4a3a, 0x4a3a2a, 0x6b5b4b, 0x3d3025, 0x8b7355];
+  const roofColor = roofColors[Math.floor(Math.random() * roofColors.length)];
+  const roofMat = new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.5, metalness: 0.1 });
   const roof = new THREE.Mesh(roofGeo, roofMat);
   roof.position.y = h + roofH / 2;
   roof.castShadow = true;
   group.add(roof);
 
-  // Antenna + red light for tall buildings
-  if (h > 3.5) {
+  // Antenna + red light for ~30% of tall buildings
+  if (h > 3.5 && Math.random() < 0.3) {
     const antGeo = new THREE.CylinderGeometry(0.06, 0.06, h * 0.18, 6);
     const antMat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.3, metalness: 0.8 });
     const ant = new THREE.Mesh(antGeo, antMat);
@@ -697,7 +708,7 @@ function generateCity() {
     const w = 1.4 + Math.random() * 0.8;
     const d = 1.4 + Math.random() * 0.8;
     const h = 5 + Math.random() * 7;
-    const color = 0x8899bb + Math.floor(Math.random() * 0x223344);
+    const color = new THREE.Color().setHSL(0.58 + Math.random() * 0.08, 0.4 + Math.random() * 0.3, 0.35 + Math.random() * 0.25).getHex();
     const building = createBuilding(x, z, w, d, h, color);
     buildings.push(building);
   }
@@ -1380,9 +1391,9 @@ generateCity();
 gameLoop();
 
 console.log('🌊 Flood City — prêt !');
-console.log('  🖱️ Clic gauche = placer un mur (coût: 10 ressources)');
-console.log('  🖱️ Clic droit = tourner la caméra');
-console.log('  ⌨️  R = recommencer');
+console.log('  🖱️ Clic = placer | ⌨️ 1/2/3 = tier mur | T = tranchée | R = recommencer');
+console.log('  🖱️ Clic droit = tourner | Molette = zoom');
+console.log('  💡 Desktop uniquement (WebGL + souris recommandés)');
 </script>
 </body>
 </html>

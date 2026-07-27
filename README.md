@@ -61,6 +61,16 @@ python3 -m http.server 8080
 
 Déployé sur https://games.cloudfr.net/floodcity/
 
+## 🏷️ Versioning
+
+Format : `ANNÉE.MOIS.NNN` (ex: `2026.07.002`).
+
+- **NNN** (compteur 3 chiffres) s'incrémente à chaque release déployée
+- Remise à `001` au changement de mois (`ANNÉE.MOIS` suit la date de release)
+- Le compteur ne se réinitialise jamais en cours de mois
+
+La source de vérité unique est la constante `GAME_VERSION` dans `index.html` (en-tête du bloc `<script type="module">`). La balise `<meta name="version">` et les affichages HUD sont synchronisés automatiquement depuis cette constante.
+
 ## 📝 Repo
 
 https://github.com/LostInTheBugs/FloodCity

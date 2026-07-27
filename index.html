@@ -3,13 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="version" content="2026.07.001">
+<meta name="version" content="2026.07.002">
 <title>Flood City</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { overflow: hidden; background: #0a0a1a; font-family: 'Segoe UI', system-ui, sans-serif; }
   canvas { display: block; }
 
+  /* ─── HUD ────────────────────────────────────────────── */
   #hud {
     position: fixed; top: 20px; left: 20px;
     z-index: 10; pointer-events: none;
@@ -21,7 +22,9 @@
     padding: 16px 20px;
     min-width: 200px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    display: none;
   }
+  #hud.visible { display: block; }
   #hud h1 {
     font-size: 1.5em; font-weight: 700; margin: 0 0 10px;
     letter-spacing: 1px;
@@ -59,34 +62,133 @@
     -webkit-backdrop-filter: blur(8px);
     padding: 8px 18px; border-radius: 20px;
     border: 1px solid rgba(255,255,255,0.08);
+    display: none;
   }
+  #controls.visible { display: block; }
   #controls kbd {
     background: rgba(255,255,255,0.1);
     padding: 2px 7px; border-radius: 4px; margin: 0 2px;
     border: 1px solid rgba(255,255,255,0.15);
   }
 
-  #restart-btn {
+  /* ─── Game Over buttons ───────────────────────────────── */
+  #gameover-panel {
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, 80px);
+    z-index: 25; display: none; flex-direction: column; gap: 12px;
+    align-items: center;
+  }
+  #gameover-panel.visible { display: flex; }
+  #gameover-panel button {
     padding: 14px 40px; font-size: 1.15em;
-    background: linear-gradient(135deg, #ff6b35, #e55d2b);
     color: white; border: none; border-radius: 10px; cursor: pointer;
-    z-index: 25; display: none; font-weight: 700;
-    box-shadow: 0 4px 24px rgba(255,107,53,0.5);
+    font-weight: 700;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
     transition: transform 0.15s, box-shadow 0.15s;
     letter-spacing: 0.5px;
+    width: 260px;
   }
-  #restart-btn:hover { transform: translate(-50%, 80px) scale(1.06); }
-  #restart-btn.visible { display: block; }
+  #gameover-panel button:hover { transform: scale(1.06); }
+  #restart-btn {
+    background: linear-gradient(135deg, #ff6b35, #e55d2b);
+    box-shadow: 0 4px 24px rgba(255,107,53,0.5);
+  }
+  #menu-btn {
+    background: linear-gradient(135deg, #5c6bc0, #3f51b5);
+    box-shadow: 0 4px 24px rgba(92,107,192,0.5);
+  }
+
+  /* ─── Home screen ─────────────────────────────────────── */
+  #home-screen {
+    position: fixed; inset: 0;
+    z-index: 50;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(5,8,20,0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  #home-screen.hidden { display: none; }
+  #home-screen h2 {
+    font-size: 3em; font-weight: 800; margin-bottom: 8px;
+    letter-spacing: 2px;
+    background: linear-gradient(135deg, #64b5f6, #42a5f5, #1e88e5);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-align: center;
+  }
+  #home-screen .subtitle {
+    color: rgba(255,255,255,0.45); font-size: 1em;
+    margin-bottom: 40px; letter-spacing: 1px;
+  }
+  #map-cards {
+    display: flex; gap: 20px; flex-wrap: wrap;
+    justify-content: center; max-width: 700px;
+  }
+  .map-card {
+    background: rgba(15,20,40,0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px; padding: 28px 24px;
+    width: 280px; cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .map-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(100,180,255,0.5);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6), 0 0 30px rgba(66,165,245,0.15);
+  }
+  .map-card h3 {
+    font-size: 1.3em; color: #e0e8f0; margin-bottom: 6px;
+    font-weight: 700;
+  }
+  .map-card .diff {
+    font-size: 0.85em; color: #8ab4f8; margin-bottom: 10px;
+  }
+  .map-card .desc {
+    font-size: 0.9em; color: #a0a8b8; line-height: 1.4;
+  }
+  .map-card .hint {
+    margin-top: 12px; font-size: 0.75em; color: rgba(255,255,255,0.3);
+    font-style: italic;
+  }
 
   @keyframes alertFlash {
     0%, 100% { box-shadow: inset 0 0 0 rgba(255,0,0,0); }
     50% { box-shadow: inset 0 0 60px rgba(255,0,0,0.4); }
   }
+
+  /* ─── Version display ─────────────────────────────────── */
+  #home-version {
+    margin-top: 28px;
+    font-size: 0.75em;
+    color: rgba(255,255,255,0.25);
+    text-align: center;
+    letter-spacing: 1px;
+  }
+  .hud-ver-stat {
+    border-top: 1px solid rgba(255,255,255,0.08) !important;
+    padding-top: 6px !important;
+    margin-top: 2px !important;
+    font-size: 0.8em !important;
+    color: rgba(255,255,255,0.3) !important;
+  }
+  .hud-ver-stat span { color: rgba(255,255,255,0.35) !important; font-weight: 400 !important; }
 </style>
 </head>
 <body>
 
+<!-- ─── Home screen ─────────────────────────────────────── -->
+<div id="home-screen">
+  <h2>🌊 FLOOD CITY</h2>
+  <div class="subtitle">Protégez la ville de la montée des eaux</div>
+  <div id="map-cards"></div>
+  <div id="home-version"></div>
+</div>
+
+<!-- ─── HUD ─────────────────────────────────────────────── -->
 <div id="hud">
   <h1>🌊 FLOOD CITY</h1>
   <div class="stat">🏗️ Bâtiments <span id="buildings-count">0</span></div>
@@ -96,16 +198,22 @@
   <div class="stat" style="color:#64b5f6;font-weight:600;margin-top:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;" id="mode-indicator">🧱 Mode mur · Tier 1</div>
   <div class="stat">⏱️ Prochaine vague <span id="wave-timer">--</span></div>
   <div class="stat">⭐ Score <span id="score">0</span></div>
+  <div class="stat hud-ver-stat">Flood City <span id="hud-version"></span></div>
 </div>
 
 <div id="message"></div>
-<button id="restart-btn" onclick="restartGame()">🔄 Rejouer</button>
+
+<div id="gameover-panel">
+  <button id="restart-btn" onclick="restartGame()">🔄 Rejouer</button>
+  <button id="menu-btn" onclick="goToMenu()">🗺️ Changer de carte</button>
+</div>
 
 <div id="controls">
   🖱️ <kbd>Clic</kbd> Placer &nbsp;|&nbsp;
   ⌨️ <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> Tier &nbsp;|&nbsp;
   <kbd>T</kbd> Tranchée &nbsp;|&nbsp;
-  <kbd>R</kbd> Recommencer
+  <kbd>R</kbd> Recommencer &nbsp;|&nbsp;
+  <kbd>M</kbd> Menu
 </div>
 
 <script type="importmap">
@@ -121,7 +229,17 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+// ─── Version ──────────────────────────────────────────────────
+const GAME_VERSION = "2026.07.002";
+document.querySelector("meta[name=version]").setAttribute("content", GAME_VERSION);
+document.getElementById('home-version').textContent = 'v' + GAME_VERSION;
+document.getElementById('hud-version').textContent = 'v' + GAME_VERSION;
+console.log("Flood City v" + GAME_VERSION);
+
 // ─── DOM refs ──────────────────────────────────────────────
+const $homeScreen = document.getElementById('home-screen');
+const $mapCards = document.getElementById('map-cards');
+const $hud = document.getElementById('hud');
 const $buildings = document.getElementById('buildings-count');
 const $resources = document.getElementById('resources');
 const $wallsCount = document.getElementById('walls-count');
@@ -129,7 +247,9 @@ const $trenchesCount = document.getElementById('trenches-count');
 const $waveTimer = document.getElementById('wave-timer');
 const $score = document.getElementById('score');
 const $message = document.getElementById('message');
-const $restart = document.getElementById('restart-btn');
+const $gameoverPanel = document.getElementById('gameover-panel');
+const $restartBtn = document.getElementById('restart-btn');
+const $controls = document.getElementById('controls');
 const $mode = document.getElementById('mode-indicator');
 
 // ─── Three.js setup ─────────────────────────────────────────
@@ -161,22 +281,6 @@ controls.maxPolarAngle = Math.PI / 2 + 0.3;
 controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
 controls.update();
 
-// City group — all generated decor goes here (easy cleanup)
-const cityGroup = new THREE.Group();
-scene.add(cityGroup);
-
-// ─── Disposal helper ────────────────────────────────────────
-function disposeGroup(group) {
-  group.traverse(c => {
-    if (c.geometry) c.geometry.dispose();
-    if (c.material) {
-      const mats = Array.isArray(c.material) ? c.material : [c.material];
-      mats.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
-    }
-  });
-  group.clear();
-}
-
 // ─── Lighting ───────────────────────────────────────────────
 const ambient = new THREE.AmbientLight(0x8899cc, 1.2);
 scene.add(ambient);
@@ -195,75 +299,126 @@ scene.add(sun);
 const hemi = new THREE.HemisphereLight(0x87ceeb, 0x3d5a3d, 0.6);
 scene.add(hemi);
 
-// ─── Data ───────────────────────────────────────────────────
-const WALL_COST = 10;
-const RESOURCE_REGEN = 1.0;   // per second
+// ─── Disposal helper ────────────────────────────────────────
+function disposeGroup(group) {
+  group.traverse(c => {
+    if (c.geometry) c.geometry.dispose();
+    if (c.material) {
+      const mats = Array.isArray(c.material) ? c.material : [c.material];
+      mats.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+    }
+  });
+  group.clear();
+}
+
+// ─── MAPS REGISTRY ──────────────────────────────────────────
+const MAPS = {
+  littoral: {
+    name: 'Littoral',
+    description: 'Une ville côtière avec une large plage au sud. Les vagues arrivent depuis l\'océan — un seul front à défendre.',
+    difficulty: '⭐ Facile',
+    difficultyStars: 1,
+    terrainHalf: 17,
+    groundColor: 0x6b9e45,
+    // Coastline params
+    beachZ: -14,
+    beachWidth: 40,
+    beachDepth: 3.5,
+    foamZ: -15.5,
+    // Buildable zone
+    buildXMin: -17,
+    buildXMax: 17,
+    buildZMin: -3,    // buildings must be z >= -3 (6+ units from beach edge at z=-12.25)
+    buildZMax: 17,
+    // Beachfront clear zone (no buildings between buildZMin and this)
+    // Beach edge is at -12.25 (beachZ - beachDepth/2 = -14 - 1.75 = -15.75... wait let me recalculate)
+    // beach at z=-14, depth=3.5 → spans from -15.75 to -12.25
+    // So beach edge (where sand meets grass) is at z=-12.25
+    // We need >= 6 units from z=-12.25 → buildings start at z >= -6.25, rounded to -3 for road alignment
+    // The beachfront road is at z=-11
+    beachRoadZ: -11,
+    beachEdgeZ: -12.25,  // northern edge of beach (where sand meets grass)
+    // Ocean (near, animated)
+    oceanZ: -21,
+    oceanWidth: 48,
+    oceanDepth: 14,
+    // Wave config
+    waveDirections: ['south'],
+    waveSpawnZ: { south: -17 },
+    // Roads
+    roads: [
+      { x1: -8, z1: -12, x2: -8, z2: 17 },
+      { x1: 3, z1: -12, x2: 3, z2: 17 },
+      { x1: -17, z1: -4, x2: 17, z2: -4 },
+      { x1: -17, z1: 5, x2: 17, z2: 5 },
+      { x1: -17, z1: -11, x2: 17, z2: -11 },
+    ],
+    // Intersections for crosswalks (computed from road crossings)
+  },
+  ile: {
+    name: 'Île',
+    description: 'Une île entourée d\'eau sur tous les côtés. Les vagues arrivent alternativement du nord ou du sud — défendez sur deux fronts !',
+    difficulty: '⭐⭐ Moyen',
+    difficultyStars: 2,
+    terrainHalf: 12,
+    islandRadius: 10.5,
+    groundColor: 0x6a9e48,
+    // Coastline params (ring beach around island)
+    beachInnerR: 10.5,
+    beachOuterR: 13,
+    // Buildable zone (checked against circle x²+z² <= islandRadius²)
+    buildXMin: -10,
+    buildXMax: 10,
+    buildZMin: -10,
+    buildZMax: 10,
+    // Wave config
+    waveDirections: ['north', 'south'],
+    waveSpawnZ: { south: -13, north: 13 },
+    // Roads (compact grid within island)
+    roads: [
+      { x1: -5, z1: -12, x2: -5, z2: 12 },
+      { x1: 2, z1: -12, x2: 2, z2: 12 },
+      { x1: -12, z1: -3, x2: 12, z2: -3 },
+      { x1: -12, z1: 4, x2: 12, z2: 4 },
+    ],
+  }
+};
+
+// Helper to check if a point is within an island's buildable circle
+function isOnIsland(px, pz, map) {
+  if (!map.islandRadius) return true; // not an island
+  return (px * px + pz * pz) <= map.islandRadius * map.islandRadius;
+}
+
+// ─── Map content group (ALL map objects go here) ────────────
+let mapGroup = new THREE.Group();
+scene.add(mapGroup);
+
+// City sub-group (buildings, roads, trees, cars, peds, beach items)
+let cityGroup = new THREE.Group();
+mapGroup.add(cityGroup);
+
+// Ocean planes group
+let oceanGroup = new THREE.Group();
+mapGroup.add(oceanGroup);
+
+// ─── Shared data ────────────────────────────────────────────
+const WALL_COST = 10; // unused, kept for reference
+const RESOURCE_REGEN = 1.0;
 const RESOURCE_CAP = 300;
 const WAVE_INTERVAL_MIN = 14;
 const WAVE_INTERVAL_MAX = 22;
-const TERRAIN_HALF = 17;
 
-// Wall tiers
 const WALL_TIERS = {
   1: { name: 'Sac de sable', cost: 10, hp: 100, color: 0xd4b896, geoH: 0.55 },
   2: { name: 'Renforcé', cost: 25, hp: 300, color: 0x8b7355, geoH: 0.7 },
   3: { name: 'Béton', cost: 50, hp: 600, color: 0x888888, geoH: 0.9 },
 };
 const TRENCH_COST = 5;
-const TRENCH_DAMAGE = 8;  // per second when wave is over trench
-const TRENCH_HP = 40;     // trench HP — gets consumed as it damages waves
+const TRENCH_DAMAGE = 8;
+const TRENCH_HP = 40;
 
-// ─── Ground ─────────────────────────────────────────────────
-const groundGeo = new THREE.PlaneGeometry(TERRAIN_HALF * 2 + 6, TERRAIN_HALF * 2 + 6);
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x6b9e45, roughness: 0.85 });
-const ground = new THREE.Mesh(groundGeo, groundMat);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
-
-// Grid helper for orientation
-const grid = new THREE.GridHelper(TERRAIN_HALF * 2, TERRAIN_HALF, 0x3d6b2e, 0x4a7a35);
-grid.position.y = 0.01;
-scene.add(grid);
-
-// ─── Ocean ──────────────────────────────────────────────────
-// Large static ocean (invisible edges)
-const farOceanGeo = new THREE.PlaneGeometry(400, 200);
-const farOceanMat = new THREE.MeshStandardMaterial({ color: 0x1155aa, roughness: 0.15, metalness: 0.8 });
-const farOcean = new THREE.Mesh(farOceanGeo, farOceanMat);
-farOcean.rotation.x = -Math.PI / 2;
-farOcean.position.set(0, 0.03, -115.5);
-scene.add(farOcean);
-
-// Animated near ocean
-const oceanGeo = new THREE.PlaneGeometry(48, 14, 48, 14);
-const oceanMat = new THREE.MeshStandardMaterial({
-  color: 0x1565a8, roughness: 0.2, metalness: 0.7,
-  transparent: true, opacity: 0.88
-});
-const ocean = new THREE.Mesh(oceanGeo, oceanMat);
-ocean.rotation.x = -Math.PI / 2;
-ocean.position.set(0, 0.08, -21);
-ocean.receiveShadow = true;
-scene.add(ocean);
-
-// Ocean border/beach
-const beachGeo = new THREE.PlaneGeometry(40, 3.5);
-const beachMat = new THREE.MeshStandardMaterial({ color: 0xe8d5a8, roughness: 0.9 });
-const beach = new THREE.Mesh(beachGeo, beachMat);
-beach.rotation.x = -Math.PI / 2;
-beach.position.set(0, 0.02, -14);
-beach.receiveShadow = true;
-scene.add(beach);
-
-// Shoreline foam
-const foamGeo = new THREE.PlaneGeometry(40, 0.5);
-const foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
-const foamLine = new THREE.Mesh(foamGeo, foamMat);
-foamLine.rotation.x = -Math.PI / 2;
-foamLine.position.set(0, 0.05, -15.5);
-scene.add(foamLine);
-
+let currentMap = null;
 let resources = 150;
 let score = 0;
 let buildings = [];
@@ -273,14 +428,15 @@ let waves = [];
 let gameOver = false;
 let waveCountdown = 20;
 let waveNumber = 0;
-let currentTier = 1;        // 1, 2, 3
-let trenchMode = false;     // T toggles
-let alertTriggered = false; // early warning flag
+let currentTier = 1;
+let trenchMode = false;
+let alertTriggered = false;
 let cars = [];
 let roadPaths = [];
 let pedestrians = [];
+let nextWaveDir = 'south';
+let oceanPlanes = []; // animated ocean meshes
 
-// Building palette — warmer, more varied
 const BUILDING_COLORS = [
   0xe8c9a0, 0xdbb88c, 0xd4a574, 0xc4956a, 0xf0dcc0,
   0xa8c8e8, 0x90b8d8, 0xb8d4f0, 0x7aa8c8, 0xc0ddf0,
@@ -335,7 +491,6 @@ function createWindowTexture(baseColor) {
 function createBuilding(x, z, w, d, h, color) {
   const group = new THREE.Group();
 
-  // Body with window texture
   const bodyGeo = new THREE.BoxGeometry(w, h, d);
   const texture = createWindowTexture(color);
   texture.wrapS = THREE.RepeatWrapping;
@@ -362,7 +517,7 @@ function createBuilding(x, z, w, d, h, color) {
   roof.castShadow = true;
   group.add(roof);
 
-  // Antenna + red light for ~30% of tall buildings
+  // Antenna for ~30% of tall buildings
   if (h > 3.5 && Math.random() < 0.3) {
     const antGeo = new THREE.CylinderGeometry(0.06, 0.06, h * 0.18, 6);
     const antMat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.3, metalness: 0.8 });
@@ -431,7 +586,6 @@ function createCar(roadIdx) {
   const road = roadPaths[roadIdx];
   const group = new THREE.Group();
 
-  // Body
   const bodyGeo = new THREE.BoxGeometry(0.35, 0.22, 0.7);
   const colors = [0xe83333, 0x2266cc, 0xf5a623, 0x33aa55, 0xdddddd, 0x111133, 0xff8800, 0x8833cc];
   const carColor = colors[Math.floor(Math.random() * colors.length)];
@@ -441,7 +595,6 @@ function createCar(roadIdx) {
   body.castShadow = true;
   group.add(body);
 
-  // Cabin
   const cabinGeo = new THREE.BoxGeometry(0.3, 0.18, 0.35);
   const cabinMat = new THREE.MeshStandardMaterial({ color: 0x88bbdd, roughness: 0.2, metalness: 0.3, transparent: true, opacity: 0.7 });
   const cabin = new THREE.Mesh(cabinGeo, cabinMat);
@@ -449,7 +602,6 @@ function createCar(roadIdx) {
   cabin.castShadow = true;
   group.add(cabin);
 
-  // Wheels
   const wheelGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.06, 6);
   const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
   const positions = [[-0.2, 0.08, 0.22], [0.2, 0.08, 0.22], [-0.2, 0.08, -0.22], [0.2, 0.08, -0.22]];
@@ -461,7 +613,6 @@ function createCar(roadIdx) {
     group.add(wheel);
   });
 
-  // Random starting position along the road
   const t0 = Math.random();
   const x = road.x1 + (road.x2 - road.x1) * t0;
   const z = road.z1 + (road.z2 - road.z1) * t0;
@@ -473,7 +624,7 @@ function createCar(roadIdx) {
 
   cars.push({
     group, roadIdx, t: t0,
-    speed: 1.5 + Math.random() * 2.5, // units per second
+    speed: 1.5 + Math.random() * 2.5,
     direction: Math.random() > 0.5 ? 1 : -1,
   });
 }
@@ -524,20 +675,17 @@ function createCrosswalk(x, z, angle) {
 // ─── Traffic light ───────────────────────────────────────────
 function createTrafficLight(x, z) {
   const group = new THREE.Group();
-  // Pole
   const poleGeo = new THREE.CylinderGeometry(0.06, 0.08, 2.2, 6);
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.4, metalness: 0.6 });
   const pole = new THREE.Mesh(poleGeo, poleMat);
   pole.position.y = 1.1;
   pole.castShadow = true;
   group.add(pole);
-  // Signal box
   const boxGeo = new THREE.BoxGeometry(0.22, 0.55, 0.22);
   const boxMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3 });
   const box = new THREE.Mesh(boxGeo, boxMat);
   box.position.y = 2.35;
   group.add(box);
-  // Lights
   const colors = [0xff2222, 0xffaa00, 0x22cc22];
   colors.forEach((c, i) => {
     const geo = new THREE.SphereGeometry(0.07, 6, 6);
@@ -555,7 +703,6 @@ function createTrafficLight(x, z) {
 function createPedestrian(roadIdx, side) {
   const road = roadPaths[roadIdx];
   const group = new THREE.Group();
-  // Body
   const bodyGeo = new THREE.CapsuleGeometry(0.09, 0.35, 4, 6);
   const clothes = [0x3344aa, 0xcc3333, 0x33aa44, 0xdd8800, 0x7733aa, 0x555555, 0xee6699];
   const bodyMat = new THREE.MeshStandardMaterial({ color: clothes[Math.floor(Math.random() * clothes.length)], roughness: 0.7 });
@@ -563,7 +710,6 @@ function createPedestrian(roadIdx, side) {
   body.position.y = 0.4;
   body.castShadow = true;
   group.add(body);
-  // Head
   const headGeo = new THREE.SphereGeometry(0.1, 6, 6);
   const headMat = new THREE.MeshStandardMaterial({ color: 0xffd9b3, roughness: 0.6 });
   const head = new THREE.Mesh(headGeo, headMat);
@@ -573,9 +719,7 @@ function createPedestrian(roadIdx, side) {
 
   const t0 = Math.random();
   const dx = road.x2 - road.x1, dz = road.z2 - road.z1;
-  const len = Math.sqrt(dx*dx + dz*dz);
   const angle = Math.atan2(dx, dz);
-  // Sidewalk offset
   const offX = Math.cos(angle) * 1.1 * side;
   const offZ = -Math.sin(angle) * 1.1 * side;
   const x = road.x1 + dx * t0 + offX;
@@ -586,141 +730,15 @@ function createPedestrian(roadIdx, side) {
   return { group, roadIdx, side, t: t0, speed: 0.3 + Math.random() * 0.5, direction: Math.random() > 0.5 ? 1 : -1 };
 }
 
-function generateCity() {
-  // Clean entire city in one call
-  disposeGroup(cityGroup);
-  cars = [];
-  roadPaths = [];
-  pedestrians = [];
-  buildings = [];
+// ─── Beach items (littoral only) ────────────────────────────
+function createBeachItems(map) {
+  const beachZ = map.beachZ;
+  if (beachZ === undefined) return; // island uses ring beach
 
-  // ─── Roads FIRST — then buildings avoid them ───────────────
-  // Vertical avenues (stop before sea)
-  createRoad(-8, -12, -8, 17);
-  createRoad(3, -12, 3, 17);
-  // Horizontal streets (full width)
-  createRoad(-17, -4, 17, -4);
-  createRoad(-17, 5, 17, 5);
-  // Beachfront connector (parallel to sea, links avenues)
-  createRoad(-17, -11, 17, -11);
-
-  // Helper: distance from a point to the nearest road
-  function distToRoad(px, pz) {
-    let minDist = Infinity;
-    for (const r of roadPaths) {
-      const dx = r.x2 - r.x1, dz = r.z2 - r.z1;
-      const lenSq = dx * dx + dz * dz;
-      if (lenSq < 0.01) continue;
-      let t = ((px - r.x1) * dx + (pz - r.z1) * dz) / lenSq;
-      t = Math.max(0, Math.min(1, t));
-      const cx = r.x1 + t * dx, cz = r.z1 + t * dz;
-      const dist = Math.hypot(px - cx, pz - cz);
-      if (dist < minDist) minDist = dist;
-    }
-    return minDist;
-  }
-
-  // Helper: check if point is too close to existing buildings/trees
-  function tooClose(px, pz, margin = 3) {
-    return placed.some(p => Math.hypot(p.x - px, p.z - pz) < margin);
-  }
-
-  // ─── Buildings along roads ───────────────────────────────────
-  const placed = [];
-
-  for (const road of roadPaths) {
-    const dx = road.x2 - road.x1, dz = road.z2 - road.z1;
-    const len = Math.sqrt(dx * dx + dz * dz);
-    const angle = Math.atan2(dx, dz);
-    const nx = Math.cos(angle);  // perpendicular X
-    const nz = -Math.sin(angle); // perpendicular Z
-    const setback = 2.6 + Math.random() * 1.0; // distance from road center to building front
-
-    // Place buildings on both sides of the road
-    for (const side of [-1, 1]) {
-      const spacing = 3.5 + Math.random() * 2; // spacing between buildings along road
-      const count = Math.floor(len / spacing);
-      for (let i = 0; i < count; i++) {
-        const t = (i + 0.5) / count; // position along road
-        const bx = road.x1 + dx * t + nx * setback * side;
-        const bz = road.z1 + dz * t + nz * setback * side;
-
-        if (Math.abs(bx) > TERRAIN_HALF - 0.5 || Math.abs(bz) > TERRAIN_HALF - 0.5) continue;
-        if (bz < -11) continue; // keep beach clear
-        if (tooClose(bx, bz, 2.5)) continue;
-
-        const w = 0.8 + Math.random() * 1.2;
-        const d = 0.8 + Math.random() * 1.2;
-        const h = 1.5 + Math.random() * 4.5;
-        const color = BUILDING_COLORS[Math.floor(Math.random() * BUILDING_COLORS.length)];
-        const building = createBuilding(bx, bz, w, d, h, color);
-        buildings.push(building);
-        placed.push({ x: bx, z: bz });
-      }
-    }
-  }
-
-  // Fill gaps with scattered buildings (avoid roads but stay close)
-  for (let i = 0; i < 10; i++) {
-    let attempts = 0, x, z;
-    do {
-      x = (Math.random() - 0.5) * (TERRAIN_HALF * 2 - 4);
-      z = (Math.random() - 0.5) * (TERRAIN_HALF * 2 - 6) + 1;
-      attempts++;
-    } while (attempts < 60 && (
-      tooClose(x, z, 3) ||
-      distToRoad(x, z) < 1.5 ||
-      distToRoad(x, z) > 8 ||
-      z < -11  // keep beach clear
-    ));
-    if (attempts >= 60) continue;
-    const w = 0.8 + Math.random() * 1.2;
-    const d = 0.8 + Math.random() * 1.2;
-    const h = 1.5 + Math.random() * 4.5;
-    const color = BUILDING_COLORS[Math.floor(Math.random() * BUILDING_COLORS.length)];
-    const building = createBuilding(x, z, w, d, h, color);
-    buildings.push(building);
-    placed.push({ x, z });
-  }
-
-  // Place trees near buildings (not on roads, not overlapping buildings)
-  for (const b of buildings) {
-    for (let t = 0; t < 2 + Math.floor(Math.random() * 3); t++) {
-      const tx = b.x + (Math.random() - 0.5) * (b.w + 4);
-      const tz = b.z + (Math.random() - 0.5) * (b.d + 4);
-      if (!tooClose(tx, tz, 1.8) && distToRoad(tx, tz) > 1.8) {
-        createTree(tx, tz);
-        placed.push({ x: tx, z: tz });
-      }
-    }
-  }
-
-  // Downtown cluster (taller buildings between the two avenues)
-  for (let i = 0; i < 6; i++) {
-    let x, z, attempts = 0;
-    do {
-      x = -6 + i * 2.5 + (Math.random() - 0.5) * 0.5;
-      z = -2 + Math.random() * 4;
-      attempts++;
-    } while (attempts < 30 && (
-      distToRoad(x, z) < 2.0 ||
-      tooClose(x, z, 3)
-    ));
-    const w = 1.4 + Math.random() * 0.8;
-    const d = 1.4 + Math.random() * 0.8;
-    const h = 5 + Math.random() * 7;
-    const color = new THREE.Color().setHSL(0.58 + Math.random() * 0.08, 0.4 + Math.random() * 0.3, 0.35 + Math.random() * 0.25).getHex();
-    const building = createBuilding(x, z, w, d, h, color);
-    buildings.push(building);
-  }
-
-  // ─── Beach items: parasols, deckchairs, beachgoers ──────────
-  const beachZ = -13.5; // middle of beach area
   for (let i = 0; i < 12; i++) {
     const bx = -14 + Math.random() * 28;
     const bz = beachZ + (Math.random() - 0.5) * 2.5;
 
-    // Parasol
     const paraGroup = new THREE.Group();
     const poleGeo = new THREE.CylinderGeometry(0.05, 0.06, 1.5, 6);
     const poleMat = new THREE.MeshStandardMaterial({ color: 0xddccaa, roughness: 0.6 });
@@ -738,7 +756,6 @@ function generateCity() {
     paraGroup.position.set(bx, 0.04, bz);
     cityGroup.add(paraGroup);
 
-    // Deckchair (transat)
     const chairGroup = new THREE.Group();
     const seatGeo = new THREE.BoxGeometry(0.7, 0.08, 1.4);
     const seatMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
@@ -746,7 +763,6 @@ function generateCity() {
     seat.position.y = 0.15;
     seat.receiveShadow = true;
     chairGroup.add(seat);
-    // Stripes
     for (let s = 0; s < 5; s++) {
       const stripeGeo = new THREE.BoxGeometry(0.7, 0.005, 0.12);
       const stripeColors = [0x2255cc, 0xcc2222, 0x22aa44];
@@ -760,7 +776,6 @@ function generateCity() {
     chairGroup.rotation.y = Math.random() * Math.PI;
     cityGroup.add(chairGroup);
 
-    // Beachgoer (lying down)
     const personGroup = new THREE.Group();
     const bodyGeo = new THREE.CapsuleGeometry(0.1, 0.5, 4, 6);
     const skinMat = new THREE.MeshStandardMaterial({ color: 0xffcc99, roughness: 0.5 });
@@ -779,15 +794,305 @@ function generateCity() {
     cityGroup.add(personGroup);
   }
 
-  // Beach ball
   const ballGeo = new THREE.SphereGeometry(0.2, 8, 8);
   const ballMat = new THREE.MeshStandardMaterial({ color: 0xff6644, roughness: 0.3 });
   const ball = new THREE.Mesh(ballGeo, ballMat);
   ball.position.set(3, 0.22, beachZ + 0.5);
   ball.castShadow = true;
   cityGroup.add(ball);
+}
 
-  // Spawn cars on roads
+// ─── Find road intersections ─────────────────────────────────
+function findIntersections() {
+  const points = [];
+  for (let i = 0; i < roadPaths.length; i++) {
+    for (let j = i + 1; j < roadPaths.length; j++) {
+      const a = roadPaths[i], b = roadPaths[j];
+      // Check if one is roughly vertical and the other horizontal
+      const aVert = Math.abs(a.x2 - a.x1) < Math.abs(a.z2 - a.z1);
+      const bVert = Math.abs(b.x2 - b.x1) < Math.abs(b.z2 - b.z1);
+      if (aVert === bVert) continue;
+      // Find intersection of line segments
+      const vert = aVert ? a : b;
+      const horz = aVert ? b : a;
+      const vx = (vert.x1 + vert.x2) / 2;
+      const hz = (horz.z1 + horz.z2) / 2;
+      // Check if intersection lies within both segments
+      const vzMin = Math.min(vert.z1, vert.z2), vzMax = Math.max(vert.z1, vert.z2);
+      const hxMin = Math.min(horz.x1, horz.x2), hxMax = Math.max(horz.x1, horz.x2);
+      if (vx >= hxMin - 0.5 && vx <= hxMax + 0.5 && hz >= vzMin - 0.5 && hz <= vzMax + 0.5) {
+        points.push({ x: vx, z: hz });
+      }
+    }
+  }
+  return points;
+}
+
+// ─── Map generation (fully parameterized) ───────────────────
+function generateMap(map) {
+  currentMap = map;
+
+  // ── Purge entire map group ──────────────────────────────
+  disposeGroup(mapGroup);
+  scene.remove(mapGroup);
+
+  mapGroup = new THREE.Group();
+  scene.add(mapGroup);
+
+  cityGroup = new THREE.Group();
+  mapGroup.add(cityGroup);
+
+  oceanGroup = new THREE.Group();
+  mapGroup.add(oceanGroup);
+
+  oceanPlanes = [];
+  cars = [];
+  roadPaths = [];
+  pedestrians = [];
+  buildings = [];
+  walls = [];
+  trenches = [];
+  waves = [];
+  particlePool.forEach(p => { scene.remove(p.mesh); p.mesh.geometry?.dispose(); p.mesh.material?.dispose(); });
+  particlePool = [];
+  ghostGroup.visible = false;
+
+  // ── Ground ──────────────────────────────────────────────
+  if (map.islandRadius) {
+    // Circular island ground
+    const groundGeo = new THREE.CircleGeometry(map.islandRadius, 48);
+    const groundMat = new THREE.MeshStandardMaterial({ color: map.groundColor, roughness: 0.85 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    mapGroup.add(ground);
+
+    // Ring beach
+    const beachGeo = new THREE.RingGeometry(map.beachInnerR, map.beachOuterR, 64);
+    const beachMat = new THREE.MeshStandardMaterial({ color: 0xe8d5a8, roughness: 0.9 });
+    const beach = new THREE.Mesh(beachGeo, beachMat);
+    beach.rotation.x = -Math.PI / 2;
+    beach.position.y = 0.02;
+    beach.receiveShadow = true;
+    mapGroup.add(beach);
+
+    // Foam ring
+    const foamGeo = new THREE.RingGeometry(map.beachOuterR - 0.3, map.beachOuterR + 0.2, 64);
+    const foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+    const foamRing = new THREE.Mesh(foamGeo, foamMat);
+    foamRing.rotation.x = -Math.PI / 2;
+    foamRing.position.y = 0.05;
+    foamRing.name = 'foamRing';
+    mapGroup.add(foamRing);
+
+    // Ocean planes around the island (north, south, east, west)
+    const oceanMat = new THREE.MeshStandardMaterial({
+      color: 0x1565a8, roughness: 0.2, metalness: 0.7,
+      transparent: true, opacity: 0.88
+    });
+    const oceanSides = [
+      { x: 0, z: -(map.beachOuterR + 7), w: 36, d: 14, name: 'south' },
+      { x: 0, z: (map.beachOuterR + 7), w: 36, d: 14, name: 'north' },
+      { x: -(map.beachOuterR + 7), z: 0, w: 14, d: 36, name: 'west' },
+      { x: (map.beachOuterR + 7), z: 0, w: 14, d: 36, name: 'east' },
+    ];
+    oceanSides.forEach(side => {
+      const segW = side.name === 'north' || side.name === 'south' ? side.w : side.d;
+      const segH = side.name === 'north' || side.name === 'south' ? side.d : side.w;
+      const geo = new THREE.PlaneGeometry(segW, segH, Math.max(8, Math.floor(segW / 2)), Math.max(4, Math.floor(segH / 2)));
+      const mesh = new THREE.Mesh(geo, oceanMat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(side.x, 0.06, side.z);
+      mesh.receiveShadow = true;
+      mesh.userData = { oceanSide: side.name };
+      oceanGroup.add(mesh);
+      oceanPlanes.push(mesh);
+    });
+
+    // Far ocean (under everything)
+    const farOceanGeo = new THREE.PlaneGeometry(400, 200);
+    const farOceanMat = new THREE.MeshStandardMaterial({ color: 0x1155aa, roughness: 0.15, metalness: 0.8 });
+    const farOcean = new THREE.Mesh(farOceanGeo, farOceanMat);
+    farOcean.rotation.x = -Math.PI / 2;
+    farOcean.position.set(0, 0.01, 0);
+    mapGroup.add(farOcean);
+
+  } else {
+    // ── Littoral (rectangular terrain) ────────────────────
+    const groundGeo = new THREE.PlaneGeometry(map.terrainHalf * 2 + 6, map.terrainHalf * 2 + 6);
+    const groundMat = new THREE.MeshStandardMaterial({ color: map.groundColor, roughness: 0.85 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    mapGroup.add(ground);
+
+    // Far ocean
+    const farOceanGeo = new THREE.PlaneGeometry(400, 200);
+    const farOceanMat = new THREE.MeshStandardMaterial({ color: 0x1155aa, roughness: 0.15, metalness: 0.8 });
+    const farOcean = new THREE.Mesh(farOceanGeo, farOceanMat);
+    farOcean.rotation.x = -Math.PI / 2;
+    farOcean.position.set(0, 0.03, -115.5);
+    mapGroup.add(farOcean);
+
+    // Animated near ocean
+    const oceanGeo = new THREE.PlaneGeometry(map.oceanWidth, map.oceanDepth, Math.floor(map.oceanWidth), Math.floor(map.oceanDepth));
+    const oceanMat = new THREE.MeshStandardMaterial({
+      color: 0x1565a8, roughness: 0.2, metalness: 0.7,
+      transparent: true, opacity: 0.88
+    });
+    const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+    ocean.rotation.x = -Math.PI / 2;
+    ocean.position.set(0, 0.08, map.oceanZ);
+    ocean.receiveShadow = true;
+    ocean.name = 'nearOcean';
+    oceanGroup.add(ocean);
+    oceanPlanes.push(ocean);
+
+    // Beach
+    const beachGeo = new THREE.PlaneGeometry(map.beachWidth, map.beachDepth);
+    const beachMat = new THREE.MeshStandardMaterial({ color: 0xe8d5a8, roughness: 0.9 });
+    const beach = new THREE.Mesh(beachGeo, beachMat);
+    beach.rotation.x = -Math.PI / 2;
+    beach.position.set(0, 0.02, map.beachZ);
+    beach.receiveShadow = true;
+    mapGroup.add(beach);
+
+    // Foam line
+    const foamGeo = new THREE.PlaneGeometry(map.beachWidth, 0.5);
+    const foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
+    const foamLine = new THREE.Mesh(foamGeo, foamMat);
+    foamLine.rotation.x = -Math.PI / 2;
+    foamLine.position.set(0, 0.05, map.foamZ);
+    foamLine.name = 'foamLine';
+    mapGroup.add(foamLine);
+  }
+
+  // ── Grid helper ─────────────────────────────────────────
+  const grid = new THREE.GridHelper(map.terrainHalf * 2, map.terrainHalf, 0x3d6b2e, 0x4a7a35);
+  grid.position.y = 0.01;
+  mapGroup.add(grid);
+
+  // ── Roads ───────────────────────────────────────────────
+  for (const r of (map.roads || [])) {
+    createRoad(r.x1, r.z1, r.x2, r.z2);
+  }
+
+  // ── Buildings along roads ──────────────────────────────
+  const placed = [];
+
+  function distToRoad(px, pz) {
+    let minDist = Infinity;
+    for (const r of roadPaths) {
+      const dx = r.x2 - r.x1, dz = r.z2 - r.z1;
+      const lenSq = dx * dx + dz * dz;
+      if (lenSq < 0.01) continue;
+      let t = ((px - r.x1) * dx + (pz - r.z1) * dz) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+      const cx = r.x1 + t * dx, cz = r.z1 + t * dz;
+      minDist = Math.min(minDist, Math.hypot(px - cx, pz - cz));
+    }
+    return minDist;
+  }
+
+  function tooClose(px, pz, margin = 3) {
+    return placed.some(p => Math.hypot(p.x - px, p.z - pz) < margin);
+  }
+
+  function inBuildZone(px, pz) {
+    if (px < map.buildXMin || px > map.buildXMax) return false;
+    if (pz < map.buildZMin || pz > map.buildZMax) return false;
+    if (!isOnIsland(px, pz, map)) return false;
+    return true;
+  }
+
+  for (const road of roadPaths) {
+    const dx = road.x2 - road.x1, dz = road.z2 - road.z1;
+    const len = Math.sqrt(dx * dx + dz * dz);
+    const angle = Math.atan2(dx, dz);
+    const nx = Math.cos(angle);
+    const nz = -Math.sin(angle);
+    const setback = 2.6 + Math.random() * 1.0;
+
+    for (const side of [-1, 1]) {
+      const spacing = 3.5 + Math.random() * 2;
+      const count = Math.floor(len / spacing);
+      for (let i = 0; i < count; i++) {
+        const t = (i + 0.5) / count;
+        const bx = road.x1 + dx * t + nx * setback * side;
+        const bz = road.z1 + dz * t + nz * setback * side;
+
+        if (Math.abs(bx) > map.terrainHalf - 0.5 || Math.abs(bz) > map.terrainHalf - 0.5) continue;
+        if (!inBuildZone(bx, bz)) continue;
+        if (tooClose(bx, bz, 2.5)) continue;
+
+        const w = 0.8 + Math.random() * 1.2;
+        const d = 0.8 + Math.random() * 1.2;
+        const h = 1.5 + Math.random() * 4.5;
+        const color = BUILDING_COLORS[Math.floor(Math.random() * BUILDING_COLORS.length)];
+        const building = createBuilding(bx, bz, w, d, h, color);
+        buildings.push(building);
+        placed.push({ x: bx, z: bz });
+      }
+    }
+  }
+
+  // Fill gaps with scattered buildings
+  for (let i = 0; i < 10; i++) {
+    let attempts = 0, x, z;
+    do {
+      x = (Math.random() - 0.5) * (map.terrainHalf * 2 - 4);
+      z = (Math.random() - 0.5) * (map.terrainHalf * 2 - 6) + 1;
+      attempts++;
+    } while (attempts < 60 && (
+      tooClose(x, z, 3) ||
+      distToRoad(x, z) < 1.5 ||
+      distToRoad(x, z) > 8 ||
+      !inBuildZone(x, z)
+    ));
+    if (attempts >= 60) continue;
+    const w = 0.8 + Math.random() * 1.2;
+    const d = 0.8 + Math.random() * 1.2;
+    const h = 1.5 + Math.random() * 4.5;
+    const color = BUILDING_COLORS[Math.floor(Math.random() * BUILDING_COLORS.length)];
+    const building = createBuilding(x, z, w, d, h, color);
+    buildings.push(building);
+    placed.push({ x, z });
+  }
+
+  // Downtown cluster for littoral
+  if (!map.islandRadius) {
+    for (let i = 0; i < 6; i++) {
+      let x, z, attempts = 0;
+      do {
+        x = -6 + i * 2.5 + (Math.random() - 0.5) * 0.5;
+        z = -2 + Math.random() * 4;
+        attempts++;
+      } while (attempts < 30 && (distToRoad(x, z) < 2.0 || tooClose(x, z, 3)));
+      const w = 1.4 + Math.random() * 0.8;
+      const d = 1.4 + Math.random() * 0.8;
+      const h = 5 + Math.random() * 7;
+      const color = new THREE.Color().setHSL(0.58 + Math.random() * 0.08, 0.4 + Math.random() * 0.3, 0.35 + Math.random() * 0.25).getHex();
+      const building = createBuilding(x, z, w, d, h, color);
+      buildings.push(building);
+    }
+  }
+
+  // Trees near buildings
+  for (const b of buildings) {
+    for (let t = 0; t < 2 + Math.floor(Math.random() * 3); t++) {
+      const tx = b.x + (Math.random() - 0.5) * (b.w + 4);
+      const tz = b.z + (Math.random() - 0.5) * (b.d + 4);
+      if (!tooClose(tx, tz, 1.8) && distToRoad(tx, tz) > 1.8 && inBuildZone(tx, tz)) {
+        createTree(tx, tz);
+        placed.push({ x: tx, z: tz });
+      }
+    }
+  }
+
+  // Beach items (only for maps with a beach zone)
+  createBeachItems(map);
+
+  // Cars
   for (let ri = 0; ri < roadPaths.length; ri++) {
     const count = 1 + Math.floor(Math.random() * 2);
     for (let ci = 0; ci < count; ci++) createCar(ri);
@@ -795,49 +1100,58 @@ function generateCity() {
 
   // Sidewalks, crosswalks, traffic lights
   roadPaths.forEach(r => createSidewalks(r));
-  const intersections = [[-8,-11], [3,-11], [-8,-4], [3,-4], [-8,5], [3,5]];
-  intersections.forEach(([ix, iz]) => {
-    createCrosswalk(ix + 0.8, iz, 0);             // horizontal crosswalk
-    createCrosswalk(ix, iz + 0.8, Math.PI / 2);   // vertical crosswalk
-    createTrafficLight(ix + 1.4, iz - 1.4);       // corner
+  const intersections = findIntersections();
+  intersections.forEach(({ x, z }) => {
+    createCrosswalk(x + 0.8, z, 0);
+    createCrosswalk(x, z + 0.8, Math.PI / 2);
+    createTrafficLight(x + 1.4, z - 1.4);
   });
 
-  // Spawn pedestrians on sidewalks
+  // Pedestrians
   pedestrians = [];
   for (let ri = 0; ri < roadPaths.length; ri++) {
     for (let s = 0; s < 2; s++) {
-      const count = 1 + Math.floor(Math.random() * 3); // 1-3 peds per sidewalk
+      const count = 1 + Math.floor(Math.random() * 3);
       for (let pi = 0; pi < count; pi++) {
         pedestrians.push(createPedestrian(ri, s === 0 ? -1 : 1));
       }
     }
   }
 
+  // ── Reset game state ────────────────────────────────────
+  resources = 150;
+  score = 0;
+  gameOver = false;
+  waveCountdown = 20;
+  waveNumber = 0;
+  currentTier = 1;
+  trenchMode = false;
+  alertTriggered = false;
+  nextWaveDir = map.waveDirections[0];
+
   updateHUD();
 }
 
 // ─── Wall placement ─────────────────────────────────────────
 function placeWall(worldPos) {
-  if (gameOver) return false;
+  if (gameOver || !currentMap) return false;
   const tier = WALL_TIERS[currentTier];
   if (resources < tier.cost) {
     flashMessage(`Pas assez de ressources (${tier.cost}☼ pour ${tier.name}) !`);
     return false;
   }
-  if (Math.abs(worldPos.x) > TERRAIN_HALF || Math.abs(worldPos.z) > TERRAIN_HALF) return false;
-  if (worldPos.z < -TERRAIN_HALF + 2) return false;
+  if (Math.abs(worldPos.x) > currentMap.terrainHalf || Math.abs(worldPos.z) > currentMap.terrainHalf) return false;
+  if (!isInBuildZoneForPlacement(worldPos.x, worldPos.z)) return false;
 
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color: tier.color, roughness: 0.8, metalness: 0.05 });
 
-  // Bottom bag
   const geo = new THREE.BoxGeometry(1.1, tier.geoH, 0.45);
   const bag = new THREE.Mesh(geo, mat);
   bag.position.y = tier.geoH / 2;
   bag.castShadow = true; bag.receiveShadow = true;
   group.add(bag);
 
-  // Top bag (smaller)
   const topGeo = new THREE.BoxGeometry(1.0, tier.geoH * 0.7, 0.4);
   const topBag = new THREE.Mesh(topGeo, mat.clone());
   topBag.position.y = tier.geoH + tier.geoH * 0.35;
@@ -855,10 +1169,10 @@ function placeWall(worldPos) {
 
 // ─── Trench placement ───────────────────────────────────────
 function placeTrench(worldPos) {
-  if (gameOver) return false;
+  if (gameOver || !currentMap) return false;
   if (resources < TRENCH_COST) { flashMessage('Pas assez de ressources !'); return false; }
-  if (Math.abs(worldPos.x) > TERRAIN_HALF || Math.abs(worldPos.z) > TERRAIN_HALF) return false;
-  if (worldPos.z < -TERRAIN_HALF + 2) return false;
+  if (Math.abs(worldPos.x) > currentMap.terrainHalf || Math.abs(worldPos.z) > currentMap.terrainHalf) return false;
+  if (!isInBuildZoneForPlacement(worldPos.x, worldPos.z)) return false;
 
   const geo = new THREE.BoxGeometry(1.0, 0.15, 0.9);
   const mat = new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 1.0, metalness: 0 });
@@ -873,16 +1187,31 @@ function placeTrench(worldPos) {
   return true;
 }
 
+// ─── Placement zone check ───────────────────────────────────
+function isInBuildZoneForPlacement(px, pz) {
+  if (!currentMap) return false;
+  if (currentMap.islandRadius) {
+    return (px * px + pz * pz) <= currentMap.islandRadius * currentMap.islandRadius;
+  }
+  // For littoral: check build zone + don't place on beach
+  if (pz < currentMap.buildZMin) return false;
+  return true;
+}
+
 // ─── Wave system ────────────────────────────────────────────
 function spawnWave() {
-  if (gameOver) return;
+  if (gameOver || !currentMap) return;
 
   waveNumber++;
+  const map = currentMap;
+  const dir = nextWaveDir; // 'north' or 'south'
+  const dirSign = dir === 'north' ? -1 : 1;
+
   const difficulty = Math.min(waveNumber / 5, 1);
   const waveWidth = 6 + Math.random() * (8 + difficulty * 18);
   const waveH = 1.5 + difficulty * 5;
   const speed = 3 + difficulty * 4;
-  const maxOffset = Math.max(0, TERRAIN_HALF - waveWidth / 2);
+  const maxOffset = Math.max(0, map.terrainHalf - waveWidth / 2);
   const waveX = (Math.random() * 2 - 1) * maxOffset;
 
   const SEG_W = 1.0;
@@ -891,17 +1220,18 @@ function spawnWave() {
   const segments = [];
   const segMeshes = [];
 
+  const spawnZ = map.waveSpawnZ[dir];
+
   for (let i = 0; i < n; i++) {
     const sx = waveX - waveWidth / 2 + (i + 0.5) * (waveWidth / n);
     segments.push({ x: sx, hp: segHp, maxHp: segHp, alive: true });
-    // Mesh per segment
     const segGeo = new THREE.BoxGeometry(waveWidth / n, waveH, 2.2);
     const segMat = new THREE.MeshStandardMaterial({
       color: 0x3377bb, roughness: 0.2, metalness: 0.4,
       transparent: true, opacity: 0.7
     });
     const segMesh = new THREE.Mesh(segGeo, segMat);
-    segMesh.position.set(sx, waveH / 2, -TERRAIN_HALF);
+    segMesh.position.set(sx, waveH / 2, spawnZ);
     segMesh.castShadow = true;
     segMesh.receiveShadow = true;
     scene.add(segMesh);
@@ -910,13 +1240,15 @@ function spawnWave() {
 
   waves.push({
     segments, segMeshes,
-    speed, z: -TERRAIN_HALF, x: waveX,
+    speed, z: spawnZ, x: waveX,
     width: waveWidth, height: waveH,
     destroyedBuildings: 0,
+    dirSign, dir,
   });
 
-  const dir = waveX < -5 ? "à l'ouest" : waveX > 5 ? "à l'est" : "au centre";
-  flashMessage(`🌊 Vague #${waveNumber} ${dir} !`, 1800);
+  const dirLabel = dir === 'north' ? 'NORD' : 'SUD';
+  const offsetLabel = waveX < -5 ? "à l'ouest" : waveX > 5 ? "à l'est" : "au centre";
+  flashMessage(`🌊 Vague #${waveNumber} — front ${dirLabel} (${offsetLabel}) !`, 1800);
 }
 
 // ─── Particle pool ──────────────────────────────────────────
@@ -924,10 +1256,9 @@ const sprayGeo = new THREE.SphereGeometry(0.08, 3, 3);
 const sprayMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false });
 const debrisGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
 const debrisMat = new THREE.MeshStandardMaterial({ color: 0x998877, roughness: 0.8, depthWrite: false });
-let particlePool = []; // { mesh, vx, vy, vz, life, maxLife, type }
+let particlePool = [];
 
 function spawnParticle(x, y, z, vx, vy, vz, life, type) {
-  // Recycle dead particle or create new
   let p = particlePool.find(p => p.life <= 0);
   if (!p) {
     const geo = type === 'spray' ? sprayGeo : debrisGeo;
@@ -952,16 +1283,10 @@ function spawnParticle(x, y, z, vx, vy, vz, life, type) {
 }
 
 function spawnSpray(x, y, z) {
-  const count = 3;
-  for (let i = 0; i < count; i++) {
-    spawnParticle(
-      x, y, z,
-      (Math.random() - 0.5) * 1.5,
-      0.5 + Math.random() * 3,
-      (Math.random() - 0.5) * 1,
-      0.5 + Math.random() * 0.5,
-      'spray'
-    );
+  for (let i = 0; i < 3; i++) {
+    spawnParticle(x, y, z,
+      (Math.random() - 0.5) * 1.5, 0.5 + Math.random() * 3, (Math.random() - 0.5) * 1,
+      0.5 + Math.random() * 0.5, 'spray');
   }
 }
 
@@ -970,23 +1295,24 @@ function spawnDestroyParticles(x, y, z) {
     spawnParticle(
       x + (Math.random() - 0.5) * 2, y + Math.random() * 2, z + (Math.random() - 0.5) * 2,
       (Math.random() - 0.5) * 3, 3 + Math.random() * 5, (Math.random() - 0.5) * 3,
-      1.0 + Math.random() * 0.8,
-      'debris'
-    );
+      1.0 + Math.random() * 0.8, 'debris');
   }
 }
 
 function updateWaves(dt) {
+  if (!currentMap) return;
+  const map = currentMap;
+
   for (let wi = waves.length - 1; wi >= 0; wi--) {
     const wave = waves[wi];
 
-    // T5: Sub-step to prevent tunneling
+    // T5: sub-step anti-tunneling
     const maxStep = 0.4 / wave.speed;
     const steps = Math.max(1, Math.ceil(dt / maxStep));
     const subDt = dt / steps;
 
     for (let step = 0; step < steps; step++) {
-      wave.z += wave.speed * subDt;
+      wave.z += wave.speed * wave.dirSign * subDt;
 
       // Update segment meshes
       for (let si = 0; si < wave.segments.length; si++) {
@@ -1075,27 +1401,29 @@ function updateWaves(dt) {
       }
     } // end sub-step loop
 
-    // Spray (cosmetic, outside sub-steps)
+    // Spray (cosmetic)
     wave.sprayTimer = (wave.sprayTimer || 0) - dt;
     if (wave.sprayTimer <= 0) {
       wave.sprayTimer = 0.06;
       for (let s = 0; s < 4; s++) {
         const sx = wave.x + (Math.random() - 0.5) * wave.width * 0.85;
         const sy = wave.height * 0.6 + Math.random() * wave.height * 0.4;
-        const sz = wave.z + 1 + Math.random() * 0.4;
+        const sz = wave.z + wave.dirSign * (1 + Math.random() * 0.4);
         spawnSpray(sx, sy, sz);
       }
     }
 
-    // T3: Score & resource reward when wave fully resolved
-    if (wave.z > TERRAIN_HALF + 5 || !wave.segments.some(s => s.alive)) {
-      if (wave.z > TERRAIN_HALF + 5) {
-        // Wave survived — reward proportional to buildings saved
+    // Wave removal — bidirectional check
+    const pastNorth = wave.dirSign === -1 && wave.z < -map.terrainHalf - 5;
+    const pastSouth = wave.dirSign === 1 && wave.z > map.terrainHalf + 5;
+    const allDead = !wave.segments.some(s => s.alive);
+
+    if (pastNorth || pastSouth || allDead) {
+      if (pastNorth || pastSouth) {
         const alive = buildings.filter(b => b.alive).length;
         score += 10 + waveNumber * 2 + alive;
         resources = Math.min(RESOURCE_CAP, resources + 15 + waveNumber * 2);
       } else {
-        // Wave destroyed — bonus reward
         score += 20 + waveNumber * 3;
         resources = Math.min(RESOURCE_CAP, resources + 25 + waveNumber * 3);
       }
@@ -1107,22 +1435,31 @@ function updateWaves(dt) {
 
 // ─── Water animation ────────────────────────────────────────
 function animateOcean(time) {
-  const positions = oceanGeo.attributes.position;
-  for (let i = 0; i < positions.count; i++) {
-    const x = positions.getX(i);
-    const y = positions.getY(i);
-    const z = 0.2 * Math.sin(x * 1.1 + time * 1.6) * Math.cos(y * 1.5 + time * 1.4)
-            + 0.12 * Math.sin(x * 2.3 + time * 2.1) * Math.sin(y * 1.9 - time * 1.3)
-            + 0.06 * Math.cos(x * 3.7 + time * 2.8) * Math.cos(y * 3.1 - time * 1.9);
-    positions.setZ(i, z);
+  for (const oceanPlane of oceanPlanes) {
+    const geo = oceanPlane.geometry;
+    if (!geo || !geo.attributes || !geo.attributes.position) continue;
+    const positions = geo.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+      const x = positions.getX(i);
+      const y = positions.getY(i);
+      const z = 0.2 * Math.sin(x * 1.1 + time * 1.6) * Math.cos(y * 1.5 + time * 1.4)
+              + 0.12 * Math.sin(x * 2.3 + time * 2.1) * Math.sin(y * 1.9 - time * 1.3)
+              + 0.06 * Math.cos(x * 3.7 + time * 2.8) * Math.cos(y * 3.1 - time * 1.9);
+      positions.setZ(i, z);
+    }
+    positions.needsUpdate = true;
   }
-  positions.needsUpdate = true;
-  // Foam pulse
-  foamLine.material.opacity = 0.35 + Math.sin(time * 2.2) * 0.12;
+
+  // Foam pulse (littoral foam line or island foam ring)
+  const foam = mapGroup.getObjectByName('foamLine') || mapGroup.getObjectByName('foamRing');
+  if (foam) {
+    foam.material.opacity = 0.35 + Math.sin(time * 2.2) * 0.12;
+  }
 }
 
 // ─── HUD ────────────────────────────────────────────────────
 function updateHUD() {
+  if (!currentMap) return;
   const alive = buildings.filter(b => b.alive).length;
   $buildings.textContent = alive;
   if (alive <= 8) $buildings.classList.add('warning');
@@ -1147,25 +1484,23 @@ const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
-// Ghost mesh for placement preview
 const ghostMat = new THREE.MeshStandardMaterial({ color: 0x44ff44, roughness: 0.5, transparent: true, opacity: 0.45, depthWrite: false });
 const ghostGroup = new THREE.Group();
 ghostGroup.visible = false;
 scene.add(ghostGroup);
 
 function isValidPlacement(x, z) {
-  if (Math.abs(x) > TERRAIN_HALF || Math.abs(z) > TERRAIN_HALF) return false;
-  if (z < -11) return false;
-  // Check overlap with buildings
+  if (!currentMap) return false;
+  const map = currentMap;
+  if (Math.abs(x) > map.terrainHalf || Math.abs(z) > map.terrainHalf) return false;
+  if (!isInBuildZoneForPlacement(x, z)) return false;
   for (const b of buildings) {
     if (!b.alive) continue;
     if (Math.abs(b.x - x) < b.w / 2 + 0.7 && Math.abs(b.z - z) < b.d / 2 + 0.7) return false;
   }
-  // Check overlap with existing walls
   for (const w of walls) {
     if (Math.abs(w.x - x) < 0.8 && Math.abs(w.z - z) < 0.8) return false;
   }
-  // Check overlap with existing trenches
   for (const t of trenches) {
     if (Math.abs(t.x - x) < 0.8 && Math.abs(t.z - z) < 0.8) return false;
   }
@@ -1200,7 +1535,7 @@ function updateGhost(snapped) {
 }
 
 renderer.domElement.addEventListener('mousemove', (e) => {
-  if (gameOver) { ghostGroup.visible = false; return; }
+  if (gameOver || !currentMap) { ghostGroup.visible = false; return; }
   mouse.x = (e.clientX / innerWidth) * 2 - 1;
   mouse.y = -(e.clientY / innerHeight) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
@@ -1216,7 +1551,7 @@ renderer.domElement.addEventListener('mousemove', (e) => {
 });
 
 renderer.domElement.addEventListener('click', (e) => {
-  if (gameOver) return;
+  if (gameOver || !currentMap) return;
   mouse.x = (e.clientX / innerWidth) * 2 - 1;
   mouse.y = -(e.clientY / innerHeight) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
@@ -1228,7 +1563,7 @@ renderer.domElement.addEventListener('click', (e) => {
       Math.round(intersection.z * 2) / 2
     );
     if (trenchMode) placeTrench(snapped); else placeWall(snapped);
-    updateGhost(snapped); // refresh ghost color
+    updateGhost(snapped);
   }
 });
 
@@ -1241,18 +1576,19 @@ function gameLoop() {
   const now = performance.now() / 1000;
   let dt = now - lastFrameTime;
   lastFrameTime = now;
-  if (dt > 0.2) dt = 0.2; // clamp
+  if (dt > 0.2) dt = 0.2;
 
-  if (!gameOver) {
-    // Resource regen
+  if (!gameOver && currentMap) {
     resources = Math.min(RESOURCE_CAP, resources + RESOURCE_REGEN * dt);
 
-    // Wave countdown
     waveCountdown -= dt;
-    // Early warning alert at 10s
+    // Alert at 10s — pick direction then
     if (!alertTriggered && waveCountdown <= 10 && waveCountdown > 0) {
       alertTriggered = true;
-      flashMessage('⚠️  ALERTE INONDATION  ⚠️', 2500);
+      const dirs = currentMap.waveDirections;
+      nextWaveDir = dirs[Math.floor(Math.random() * dirs.length)];
+      const dirLabel = nextWaveDir === 'north' ? 'NORD' : 'SUD';
+      flashMessage(`⚠️ ALERTE — front ${dirLabel} ⚠️`, 2500);
       document.body.style.animation = 'alertFlash 0.5s ease-in-out 3';
       setTimeout(() => document.body.style.animation = '', 2000);
     }
@@ -1263,26 +1599,23 @@ function gameLoop() {
       waveCountdown = Math.max(8, baseInterval - waveNumber * 0.5);
     }
 
-    // Update waves
     updateWaves(dt);
 
-    // Update cars
+    // Cars
     for (const car of cars) {
       const road = roadPaths[car.roadIdx];
       const len = Math.hypot(road.x2 - road.x1, road.z2 - road.z1);
       car.t += (car.speed / len) * car.direction * dt;
       if (car.t > 1) car.t -= 1;
       if (car.t < 0) car.t += 1;
-      const x = road.x1 + (road.x2 - road.x1) * car.t;
-      const z = road.z1 + (road.z2 - road.z1) * car.t;
-      car.group.position.x = x;
-      car.group.position.z = z;
+      car.group.position.x = road.x1 + (road.x2 - road.x1) * car.t;
+      car.group.position.z = road.z1 + (road.z2 - road.z1) * car.t;
       car.group.rotation.y = car.direction > 0
         ? Math.atan2(road.x2 - road.x1, road.z2 - road.z1)
         : Math.atan2(road.x1 - road.x2, road.z1 - road.z2);
     }
 
-    // Update pedestrians
+    // Pedestrians
     for (const ped of pedestrians) {
       const road = roadPaths[ped.roadIdx];
       const dx = road.x2 - road.x1, dz = road.z2 - road.z1;
@@ -1298,7 +1631,7 @@ function gameLoop() {
       ped.group.rotation.y = ped.direction > 0 ? angle : angle + Math.PI;
     }
 
-    // Update particles
+    // Particles
     for (const p of particlePool) {
       if (p.life <= 0) { p.mesh.visible = false; continue; }
       p.life -= dt;
@@ -1312,18 +1645,16 @@ function gameLoop() {
       if (p.life <= 0) p.mesh.visible = false;
     }
 
-    // Check game over
+    // Game over check
     const alive = buildings.filter(b => b.alive).length;
     if (alive <= 5) {
       gameOver = true;
       flashMessage(alive === 0 ? '💀 Ville détruite !' : `🏚️ Seulement ${alive} bâtiments sauvés...`, 0);
       $message.classList.add('show');
-      $restart.classList.add('visible');
+      $gameoverPanel.classList.add('visible');
     }
 
-    // Animate ocean
     animateOcean(now);
-
     updateHUD();
     $waveTimer.textContent = Math.ceil(Math.max(0, waveCountdown));
   }
@@ -1332,9 +1663,11 @@ function gameLoop() {
   renderer.render(scene, camera);
 }
 
-// ─── Restart ────────────────────────────────────────────────
+// ─── Restart (same map) ────────────────────────────────────
 window.restartGame = function() {
-  // Clean gameplay objects
+  if (!currentMap) return;
+
+  // Clean gameplay objects (walls, trenches, waves, particles)
   walls.forEach(w => {
     scene.remove(w.group);
     w.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
@@ -1346,27 +1679,88 @@ window.restartGame = function() {
     w.segMeshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
   });
   waves = [];
-
-  // Clean particles
-  particlePool.forEach(p => { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); });
+  particlePool.forEach(p => { scene.remove(p.mesh); p.mesh.geometry?.dispose(); p.mesh.material?.dispose(); });
   particlePool = [];
 
-  // Reset state
-  resources = 150;
-  score = 0;
-  gameOver = false;
-  waveCountdown = 15;
-  waveNumber = 0;
-  currentTier = 1;
-  trenchMode = false;
-  alertTriggered = false;
-
   $message.classList.remove('show');
-  $restart.classList.remove('visible');
+  $gameoverPanel.classList.remove('visible');
 
-  generateCity();
-  updateHUD();
+  generateMap(currentMap);
 };
+
+// ─── Go to menu ─────────────────────────────────────────────
+window.goToMenu = function() {
+  // Full cleanup
+  walls.forEach(w => {
+    scene.remove(w.group);
+    w.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+  });
+  walls = [];
+  trenches.forEach(t => { scene.remove(t.mesh); t.mesh.geometry.dispose(); t.mesh.material.dispose(); });
+  trenches = [];
+  waves.forEach(w => {
+    w.segMeshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+  });
+  waves = [];
+  particlePool.forEach(p => { scene.remove(p.mesh); p.mesh.geometry?.dispose(); p.mesh.material?.dispose(); });
+  particlePool = [];
+
+  // Dispose entire map group
+  disposeGroup(mapGroup);
+  scene.remove(mapGroup);
+  mapGroup = new THREE.Group();
+  scene.add(mapGroup);
+  cityGroup = new THREE.Group();
+  mapGroup.add(cityGroup);
+  oceanGroup = new THREE.Group();
+  mapGroup.add(oceanGroup);
+  oceanPlanes = [];
+  cars = [];
+  roadPaths = [];
+  pedestrians = [];
+  buildings = [];
+  currentMap = null;
+  gameOver = true; // pause loop
+
+  ghostGroup.visible = false;
+  $message.classList.remove('show');
+  $gameoverPanel.classList.remove('visible');
+  $hud.classList.remove('visible');
+  $controls.classList.remove('visible');
+  $homeScreen.classList.remove('hidden');
+};
+
+// ─── Start game on a map ────────────────────────────────────
+function startGame(mapId) {
+  const map = MAPS[mapId];
+  if (!map) return;
+
+  $homeScreen.classList.add('hidden');
+  $hud.classList.add('visible');
+  $controls.classList.add('visible');
+  $gameoverPanel.classList.remove('visible');
+  $message.classList.remove('show');
+  gameOver = false;
+
+  generateMap(map);
+}
+
+// ─── Build home screen cards ────────────────────────────────
+function buildHomeScreen() {
+  $mapCards.innerHTML = '';
+  for (const [id, map] of Object.entries(MAPS)) {
+    const card = document.createElement('div');
+    card.className = 'map-card';
+    card.innerHTML = `
+      <h3>${map.name}</h3>
+      <div class="diff">${map.difficulty}</div>
+      <div class="desc">${map.description}</div>
+      <div class="hint">Cliquez pour jouer</div>
+    `;
+    card.addEventListener('click', () => startGame(id));
+    $mapCards.appendChild(card);
+  }
+}
 
 // ─── Resize ─────────────────────────────────────────────────
 window.addEventListener('resize', () => {
@@ -1377,7 +1771,15 @@ window.addEventListener('resize', () => {
 
 // ─── Keyboard shortcuts ─────────────────────────────────────
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'r' || e.key === 'R') { restartGame(); return; }
+  if (e.key === 'r' || e.key === 'R') {
+    if (currentMap) restartGame();
+    return;
+  }
+  if (e.key === 'm' || e.key === 'M') {
+    goToMenu();
+    return;
+  }
+  if (!currentMap || gameOver) return;
   if (e.key === '1') { currentTier = 1; trenchMode = false; flashMessage('🧱 Sac de sable (10☼)', 800); updateHUD(); }
   if (e.key === '2') { currentTier = 2; trenchMode = false; flashMessage('🛡️ Renforcé (25☼)', 800); updateHUD(); }
   if (e.key === '3') { currentTier = 3; trenchMode = false; flashMessage('🧱 Béton (50☼)', 800); updateHUD(); }
@@ -1385,13 +1787,11 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ─── Start ──────────────────────────────────────────────────
-generateCity();
+buildHomeScreen();
 gameLoop();
 
-console.log('🌊 Flood City — prêt !');
-console.log('  🖱️ Clic = placer | ⌨️ 1/2/3 = tier mur | T = tranchée | R = recommencer');
-console.log('  🖱️ Clic droit = tourner | Molette = zoom');
-console.log('  💡 Desktop uniquement (WebGL + souris recommandés)');
+console.log('  🗺️  Cartes : ' + Object.keys(MAPS).join(', '));
+console.log('  🖱️ Clic = placer | ⌨️ 1/2/3 = tier mur | T = tranchée | R = recommencer | M = menu');
 </script>
 </body>
 </html>

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="version" content="2026.07.001">
 <title>Flood City</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -918,32 +919,60 @@ function spawnWave() {
   flashMessage(`🌊 Vague #${waveNumber} ${dir} !`, 1800);
 }
 
-// ─── Spray particles ───────────────────────────────────────
+// ─── Particle pool ──────────────────────────────────────────
+const sprayGeo = new THREE.SphereGeometry(0.08, 3, 3);
+const sprayMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false });
+const debrisGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+const debrisMat = new THREE.MeshStandardMaterial({ color: 0x998877, roughness: 0.8, depthWrite: false });
+let particlePool = []; // { mesh, vx, vy, vz, life, maxLife, type }
+
+function spawnParticle(x, y, z, vx, vy, vz, life, type) {
+  // Recycle dead particle or create new
+  let p = particlePool.find(p => p.life <= 0);
+  if (!p) {
+    const geo = type === 'spray' ? sprayGeo : debrisGeo;
+    const mat = type === 'spray' ? sprayMat.clone() : debrisMat.clone();
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.visible = false;
+    scene.add(mesh);
+    p = { mesh, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1, type };
+    particlePool.push(p);
+  }
+  if (p.type !== type) {
+    p.mesh.geometry = type === 'spray' ? sprayGeo : debrisGeo;
+    p.mesh.material = type === 'spray' ? sprayMat.clone() : debrisMat.clone();
+    p.type = type;
+  }
+  p.mesh.position.set(x, y, z);
+  p.mesh.visible = true;
+  p.mesh.scale.setScalar(1);
+  if (p.mesh.material.opacity !== undefined) p.mesh.material.opacity = 0.7;
+  p.vx = vx; p.vy = vy; p.vz = vz;
+  p.life = life; p.maxLife = life;
+}
+
 function spawnSpray(x, y, z) {
   const count = 3;
   for (let i = 0; i < count; i++) {
-    const geo = new THREE.SphereGeometry(0.07 + Math.random() * 0.09, 3, 3);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 });
-    const drop = new THREE.Mesh(geo, mat);
-    drop.position.set(x, y, z);
-    drop.userData = {
-      vy: 0.5 + Math.random() * 3, vx: (Math.random() - 0.5) * 1.5,
-      vz: (Math.random() - 0.5) * 1, life: 0.5 + Math.random() * 0.5
-    };
-    scene.add(drop);
-    const endTime = performance.now() / 1000 + drop.userData.life;
-    function anim() {
-      const t = performance.now() / 1000;
-      if (t > endTime) { scene.remove(drop); drop.geometry.dispose(); drop.material.dispose(); return; }
-      drop.position.y += drop.userData.vy * 0.02;
-      drop.position.x += drop.userData.vx * 0.02;
-      drop.position.z += drop.userData.vz * 0.02;
-      drop.userData.vy -= 1.5 * 0.02;
-      drop.material.opacity = Math.max(0, (endTime - t) / drop.userData.life * 0.7);
-      drop.scale.setScalar(Math.max(0.2, (endTime - t) / drop.userData.life));
-      requestAnimationFrame(anim);
-    }
-    anim();
+    spawnParticle(
+      x, y, z,
+      (Math.random() - 0.5) * 1.5,
+      0.5 + Math.random() * 3,
+      (Math.random() - 0.5) * 1,
+      0.5 + Math.random() * 0.5,
+      'spray'
+    );
+  }
+}
+
+function spawnDestroyParticles(x, y, z) {
+  for (let i = 0; i < 12; i++) {
+    spawnParticle(
+      x + (Math.random() - 0.5) * 2, y + Math.random() * 2, z + (Math.random() - 0.5) * 2,
+      (Math.random() - 0.5) * 3, 3 + Math.random() * 5, (Math.random() - 0.5) * 3,
+      1.0 + Math.random() * 0.8,
+      'debris'
+    );
   }
 }
 
@@ -1074,55 +1103,6 @@ function updateWaves(dt) {
       waves.splice(wi, 1);
     }
   }
-}
-
-// ─── Destruction particles ──────────────────────────────────
-function spawnDestroyParticles(x, y, z) {
-  const count = 12;
-  const group = new THREE.Group();
-  for (let i = 0; i < count; i++) {
-    const geo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-    const mat = new THREE.MeshStandardMaterial({ color: 0x998877, roughness: 0.8 });
-    const piece = new THREE.Mesh(geo, mat);
-    piece.position.set(
-      x + (Math.random() - 0.5) * 2,
-      y + Math.random() * 2,
-      z + (Math.random() - 0.5) * 2
-    );
-    piece.userData = {
-      vy: 3 + Math.random() * 5,
-      vx: (Math.random() - 0.5) * 3,
-      vz: (Math.random() - 0.5) * 3,
-      life: 1.2 + Math.random() * 0.8
-    };
-    group.add(piece);
-  }
-  scene.add(group);
-
-  // Auto-remove after animation
-  const removeTime = performance.now() / 1000 + 2;
-  function animateParticles() {
-    const now = performance.now() / 1000;
-    if (now > removeTime) {
-      group.traverse(c => {
-        if (c.geometry) c.geometry.dispose();
-        if (c.material) c.material.dispose();
-      });
-      scene.remove(group);
-      return;
-    }
-    const dt2 = Math.min(0.05, 1 / 60);
-    for (const piece of group.children) {
-      piece.position.y += piece.userData.vy * dt2;
-      piece.position.x += piece.userData.vx * dt2;
-      piece.position.z += piece.userData.vz * dt2;
-      piece.userData.vy -= 8 * dt2;
-      piece.userData.life -= dt2;
-      piece.scale.setScalar(Math.max(0, piece.userData.life / 1.2));
-    }
-    requestAnimationFrame(animateParticles);
-  }
-  animateParticles();
 }
 
 // ─── Water animation ────────────────────────────────────────
@@ -1318,6 +1298,20 @@ function gameLoop() {
       ped.group.rotation.y = ped.direction > 0 ? angle : angle + Math.PI;
     }
 
+    // Update particles
+    for (const p of particlePool) {
+      if (p.life <= 0) { p.mesh.visible = false; continue; }
+      p.life -= dt;
+      p.mesh.position.y += p.vy * dt;
+      p.mesh.position.x += p.vx * dt;
+      p.mesh.position.z += p.vz * dt;
+      p.vy -= (p.type === 'spray' ? 1.5 : 8) * dt;
+      const ratio = Math.max(0, p.life / p.maxLife);
+      p.mesh.scale.setScalar(Math.max(0.1, ratio));
+      if (p.mesh.material.opacity !== undefined) p.mesh.material.opacity = ratio * 0.7;
+      if (p.life <= 0) p.mesh.visible = false;
+    }
+
     // Check game over
     const alive = buildings.filter(b => b.alive).length;
     if (alive <= 5) {
@@ -1352,6 +1346,10 @@ window.restartGame = function() {
     w.segMeshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
   });
   waves = [];
+
+  // Clean particles
+  particlePool.forEach(p => { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); });
+  particlePool = [];
 
   // Reset state
   resources = 150;

@@ -865,35 +865,45 @@ function spawnWave() {
   if (gameOver) return;
 
   waveNumber++;
-  const difficulty = Math.min(waveNumber / 5, 1); // 0→1 over first 5 waves, then capped
-  const waveWidth = 6 + Math.random() * (8 + difficulty * 18); // width grows with difficulty
-  const waveH = 1.5 + difficulty * 5; // height scales 1.5 → 6.5
-  const speed = 3 + difficulty * 4;  // 3 → 7
+  const difficulty = Math.min(waveNumber / 5, 1);
+  const waveWidth = 6 + Math.random() * (8 + difficulty * 18);
+  const waveH = 1.5 + difficulty * 5;
+  const speed = 3 + difficulty * 4;
+  const maxOffset = Math.max(0, TERRAIN_HALF - waveWidth / 2);
+  const waveX = (Math.random() * 2 - 1) * maxOffset;
 
-  const geo = new THREE.BoxGeometry(waveWidth, waveH, 2);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x3377bb, roughness: 0.2, metalness: 0.4,
-    transparent: true, opacity: 0.7
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(0, waveH / 2, -TERRAIN_HALF);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
+  const SEG_W = 1.0;
+  const n = Math.max(1, Math.ceil(waveWidth / SEG_W));
+  const segHp = (80 + difficulty * 200) / n;
+  const segments = [];
+  const segMeshes = [];
 
-  const baseHp = 80 + difficulty * 200; // 80 → 280
+  for (let i = 0; i < n; i++) {
+    const sx = waveX - waveWidth / 2 + (i + 0.5) * (waveWidth / n);
+    segments.push({ x: sx, hp: segHp, maxHp: segHp, alive: true });
+    // Mesh per segment
+    const segGeo = new THREE.BoxGeometry(waveWidth / n, waveH, 2.2);
+    const segMat = new THREE.MeshStandardMaterial({
+      color: 0x3377bb, roughness: 0.2, metalness: 0.4,
+      transparent: true, opacity: 0.7
+    });
+    const segMesh = new THREE.Mesh(segGeo, segMat);
+    segMesh.position.set(sx, waveH / 2, -TERRAIN_HALF);
+    segMesh.castShadow = true;
+    segMesh.receiveShadow = true;
+    scene.add(segMesh);
+    segMeshes.push(segMesh);
+  }
+
   waves.push({
-    mesh,
-    hp: baseHp,
-    maxHp: baseHp,
-    speed: speed,
-    z: -TERRAIN_HALF,
-    width: waveWidth,
-    height: waveH,
+    segments, segMeshes,
+    speed, z: -TERRAIN_HALF, x: waveX,
+    width: waveWidth, height: waveH,
     destroyedBuildings: 0,
   });
 
-  flashMessage(`🌊 Vague #${waveNumber} !`, 1800);
+  const dir = waveX < -5 ? "à l'ouest" : waveX > 5 ? "à l'est" : "au centre";
+  flashMessage(`🌊 Vague #${waveNumber} ${dir} !`, 1800);
 }
 
 // ─── Spray particles ───────────────────────────────────────
@@ -929,57 +939,70 @@ function updateWaves(dt) {
   for (let wi = waves.length - 1; wi >= 0; wi--) {
     const wave = waves[wi];
     wave.z += wave.speed * dt;
-    wave.mesh.position.z = wave.z;
-    wave.mesh.position.y = wave.height / 2;
 
-    // Spray along the wave front
+    // Update segment meshes
+    for (let si = 0; si < wave.segments.length; si++) {
+      const seg = wave.segments[si];
+      const sm = wave.segMeshes[si];
+      sm.position.z = wave.z;
+      if (!seg.alive) { sm.visible = false; continue; }
+      sm.visible = true;
+      sm.position.y = wave.height / 2;
+      const segHp = seg.hp / seg.maxHp;
+      sm.material.opacity = 0.2 + segHp * 0.55;
+      sm.scale.y = 0.3 + segHp * 0.7;
+    }
+
+    // Spray
     wave.sprayTimer = (wave.sprayTimer || 0) - dt;
     if (wave.sprayTimer <= 0) {
       wave.sprayTimer = 0.06;
       for (let s = 0; s < 4; s++) {
-        const sx = (Math.random() - 0.5) * wave.width * 0.85;
+        const sx = wave.x + (Math.random() - 0.5) * wave.width * 0.85;
         const sy = wave.height * 0.6 + Math.random() * wave.height * 0.4;
         const sz = wave.z + 1 + Math.random() * 0.4;
         spawnSpray(sx, sy, sz);
       }
     }
 
-    // Scale wave down as it loses HP
-    const hpRatio = wave.hp / wave.maxHp;
-    const currentScale = 0.3 + hpRatio * 0.7;
-    wave.mesh.scale.set(currentScale, currentScale * 0.8 + 0.2, 1);
-    wave.mesh.material.opacity = 0.3 + hpRatio * 0.4;
-
-    // Trench effect — damage wave but trenches wear out
+    // Trench vs segments
     for (let ti = trenches.length - 1; ti >= 0; ti--) {
       const trench = trenches[ti];
-      if (Math.abs(trench.z - wave.z) < 1.2 && Math.abs(trench.x) < wave.width / 2 * currentScale + 0.5) {
-        const dmg = TRENCH_DAMAGE * dt;
-        wave.hp -= dmg;
-        trench.hp -= dmg; // trench wears out as it damages
-        // Visual feedback: trench fades as it loses HP
-        const ratio = Math.max(0, trench.hp / trench.maxHp);
-        trench.mesh.material.opacity = 0.7 + ratio * 0.3;
-        trench.mesh.scale.y = Math.max(0.1, ratio);
-        if (trench.hp <= 0) {
-          scene.remove(trench.mesh);
-          trench.mesh.geometry.dispose();
-          trench.mesh.material.dispose();
-          trenches.splice(ti, 1);
+      if (Math.abs(trench.z - wave.z) > 1.2) continue;
+      for (const seg of wave.segments) {
+        if (!seg.alive) continue;
+        if (Math.abs(trench.x - seg.x) < 0.8) {
+          const dmg = TRENCH_DAMAGE * dt;
+          seg.hp -= dmg;
+          trench.hp -= dmg;
+          if (seg.hp <= 0) seg.alive = false;
         }
+      }
+      const ratio = Math.max(0, trench.hp / trench.maxHp);
+      trench.mesh.material.opacity = 0.7 + ratio * 0.3;
+      trench.mesh.scale.y = Math.max(0.1, ratio);
+      if (trench.hp <= 0) {
+        scene.remove(trench.mesh); trench.mesh.geometry.dispose(); trench.mesh.material.dispose();
+        trenches.splice(ti, 1);
       }
     }
 
-    // Check collisions with walls
+    // Walls vs segments
     for (let i = walls.length - 1; i >= 0; i--) {
       const wall = walls[i];
-      if (Math.abs(wall.z - wave.z) < 1.5 && Math.abs(wall.x) < wave.width / 2 * currentScale + 0.6) {
-        // Wall blocks wave
-        const dmg = 30 * dt;
-        wall.hp -= dmg;
-        wave.hp -= dmg * 1.5;
-
-        // Update wall appearance
+      if (Math.abs(wall.z - wave.z) > 1.5) continue;
+      let hitAny = false;
+      for (const seg of wave.segments) {
+        if (!seg.alive) continue;
+        if (Math.abs(wall.x - seg.x) < 0.7) {
+          hitAny = true;
+          const dmg = 30 * dt;
+          seg.hp -= dmg;
+          wall.hp -= dmg * 0.5;
+          if (seg.hp <= 0) seg.alive = false;
+        }
+      }
+      if (hitAny) {
         const wallHpRatio = Math.max(0, wall.hp / wall.maxHp);
         wall.group.children.forEach(c => {
           if (c.material && c.material.color) {
@@ -987,7 +1010,6 @@ function updateWaves(dt) {
           }
         });
         wall.group.scale.y = Math.max(0.3, wallHpRatio);
-
         if (wall.hp <= 0) {
           scene.remove(wall.group);
           wall.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
@@ -996,34 +1018,32 @@ function updateWaves(dt) {
       }
     }
 
-    // Check collisions with buildings
+    // Buildings vs segments
     for (const building of buildings) {
       if (!building.alive) continue;
-      if (Math.abs(building.z - wave.z) < 2 &&
-          Math.abs(building.x) < wave.width / 2 * currentScale + building.w / 2) {
-        // Building hit!
-        wave.hp -= building.h * 8;
-        building.alive = false;
-        scene.remove(building.group);
-        building.group.traverse(c => {
-          if (c.geometry) c.geometry.dispose();
-          if (c.material) {
-            if (c.material.map) c.material.map.dispose();
-            c.material.dispose();
-          }
-        });
-        wave.destroyedBuildings++;
-
-        // Smoke particles
-        spawnDestroyParticles(building.x, building.h, building.z);
+      if (Math.abs(building.z - wave.z) > 2) continue;
+      for (const seg of wave.segments) {
+        if (!seg.alive) continue;
+        if (Math.abs(building.x - seg.x) < building.w / 2 + 0.5) {
+          seg.hp -= building.h * 8;
+          if (seg.hp <= 0) seg.alive = false;
+          building.alive = false;
+          scene.remove(building.group);
+          building.group.traverse(c => {
+            if (c.geometry) c.geometry.dispose();
+            if (c.material) { if (c.material.map) c.material.map.dispose(); c.material.dispose(); }
+          });
+          wave.destroyedBuildings++;
+          spawnDestroyParticles(building.x, building.h, building.z);
+          break; // building destroyed, stop checking segments
+        }
       }
     }
 
-    // Remove wave if it passes through or dies
-    if (wave.z > TERRAIN_HALF + 5 || wave.hp <= 0) {
-      scene.remove(wave.mesh);
-      wave.mesh.geometry.dispose();
-      wave.mesh.material.dispose();
+    // Remove wave if all segments dead or passed through
+    const anyAlive = wave.segments.some(s => s.alive);
+    if (wave.z > TERRAIN_HALF + 5 || !anyAlive) {
+      wave.segMeshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
       waves.splice(wi, 1);
     }
   }
@@ -1234,8 +1254,7 @@ window.restartGame = function() {
   trenches.forEach(t => { scene.remove(t.mesh); t.mesh.geometry.dispose(); t.mesh.material.dispose(); });
   trenches = [];
   waves.forEach(w => {
-    scene.remove(w.mesh);
-    w.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+    w.segMeshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
   });
   waves = [];
 

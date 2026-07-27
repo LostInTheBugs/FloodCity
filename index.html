@@ -521,12 +521,13 @@ function generateCity() {
     buildings.push(building);
     placed.push({ x, z });
 
-    // Place 2-4 trees nearby (also avoid roads)
+    // Place 2-4 trees nearby (avoid buildings, roads, and other trees)
     for (let t = 0; t < 2 + Math.floor(Math.random() * 3); t++) {
-      const tx = x + (Math.random() - 0.5) * (w + 3);
-      const tz = z + (Math.random() - 0.5) * (d + 3);
-      if (!placed.some(p => Math.hypot(p.x - tx, p.z - tz) < 1.0) && !isOnRoad(tx, tz, 1.5)) {
+      const tx = x + (Math.random() - 0.5) * (w + 4);
+      const tz = z + (Math.random() - 0.5) * (d + 4);
+      if (!placed.some(p => Math.hypot(p.x - tx, p.z - tz) < 1.8) && !isOnRoad(tx, tz, 1.5)) {
         createTree(tx, tz);
+        placed.push({ x: tx, z: tz }); // trees also occupy space
       }
     }
   }
@@ -538,7 +539,10 @@ function generateCity() {
       x = -6 + i * 2.5 + (Math.random() - 0.5) * 0.5;
       z = -2 + Math.random() * 4;
       attempts++;
-    } while (attempts < 30 && isOnRoad(x, z, 2.5));
+    } while (attempts < 30 && (
+      isOnRoad(x, z, 2.5) ||
+      placed.some(p => Math.hypot(p.x - x, p.z - z) < 3)
+    ));
     const w = 1.4 + Math.random() * 0.8;
     const d = 1.4 + Math.random() * 0.8;
     const h = 5 + Math.random() * 7;

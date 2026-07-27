@@ -234,8 +234,8 @@ const WALL_TIERS = {
   3: { name: 'Béton', cost: 50, hp: 600, color: 0x888888, geoH: 0.9 },
 };
 const TRENCH_COST = 5;
-const TRENCH_DAMAGE = 18; // per second when wave is over trench
-const TRENCH_SLOW = 0.5; // speed multiplier over trench
+const TRENCH_DAMAGE = 8;  // per second when wave is over trench
+const TRENCH_HP = 40;     // trench HP — gets consumed as it damages waves
 
 let resources = 150;
 let score = 0;
@@ -512,7 +512,7 @@ function placeTrench(worldPos) {
   trenchMesh.receiveShadow = true;
   scene.add(trenchMesh);
 
-  trenches.push({ mesh: trenchMesh, x: worldPos.x, z: worldPos.z });
+  trenches.push({ mesh: trenchMesh, x: worldPos.x, z: worldPos.z, hp: TRENCH_HP, maxHp: TRENCH_HP });
   resources -= TRENCH_COST;
   updateHUD();
   return true;
@@ -608,11 +608,23 @@ function updateWaves(dt) {
     wave.mesh.scale.set(currentScale, currentScale * 0.8 + 0.2, 1);
     wave.mesh.material.opacity = 0.3 + hpRatio * 0.4;
 
-    // Trench effect — slow down and damage wave
-    for (const trench of trenches) {
+    // Trench effect — damage wave but trenches wear out
+    for (let ti = trenches.length - 1; ti >= 0; ti--) {
+      const trench = trenches[ti];
       if (Math.abs(trench.z - wave.z) < 1.2 && Math.abs(trench.x) < wave.width / 2 * currentScale + 0.5) {
-        wave.speed *= (1 - (1 - TRENCH_SLOW) * dt * 4); // gradual slow
-        wave.hp -= TRENCH_DAMAGE * dt;
+        const dmg = TRENCH_DAMAGE * dt;
+        wave.hp -= dmg;
+        trench.hp -= dmg; // trench wears out as it damages
+        // Visual feedback: trench fades as it loses HP
+        const ratio = Math.max(0, trench.hp / trench.maxHp);
+        trench.mesh.material.opacity = 0.7 + ratio * 0.3;
+        trench.mesh.scale.y = Math.max(0.1, ratio);
+        if (trench.hp <= 0) {
+          scene.remove(trench.mesh);
+          trench.mesh.geometry.dispose();
+          trench.mesh.material.dispose();
+          trenches.splice(ti, 1);
+        }
       }
     }
 

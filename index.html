@@ -249,6 +249,8 @@ let waveNumber = 0;
 let currentTier = 1;        // 1, 2, 3
 let trenchMode = false;     // T toggles
 let alertTriggered = false; // early warning flag
+let cars = [];
+let roadPaths = [];
 
 // Building palette — warmer, more varied
 const BUILDING_COLORS = [
@@ -391,9 +393,70 @@ function createRoad(x1, z1, x2, z2) {
   road.position.set((x1 + x2) / 2, 0.01, (z1 + z2) / 2);
   road.receiveShadow = true;
   scene.add(road);
+  roadPaths.push({ x1, z1, x2, z2 });
+}
+
+// ─── Car ─────────────────────────────────────────────────────
+function createCar(roadIdx) {
+  const road = roadPaths[roadIdx];
+  const group = new THREE.Group();
+
+  // Body
+  const bodyGeo = new THREE.BoxGeometry(0.35, 0.22, 0.7);
+  const colors = [0xe83333, 0x2266cc, 0xf5a623, 0x33aa55, 0xdddddd, 0x111133, 0xff8800, 0x8833cc];
+  const carColor = colors[Math.floor(Math.random() * colors.length)];
+  const bodyMat = new THREE.MeshStandardMaterial({ color: carColor, roughness: 0.3, metalness: 0.5 });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 0.22;
+  body.castShadow = true;
+  group.add(body);
+
+  // Cabin
+  const cabinGeo = new THREE.BoxGeometry(0.3, 0.18, 0.35);
+  const cabinMat = new THREE.MeshStandardMaterial({ color: 0x88bbdd, roughness: 0.2, metalness: 0.3, transparent: true, opacity: 0.7 });
+  const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+  cabin.position.set(0, 0.38, -0.05);
+  cabin.castShadow = true;
+  group.add(cabin);
+
+  // Wheels
+  const wheelGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.06, 6);
+  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+  const positions = [[-0.2, 0.08, 0.22], [0.2, 0.08, 0.22], [-0.2, 0.08, -0.22], [0.2, 0.08, -0.22]];
+  positions.forEach(([wx, wy, wz]) => {
+    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(wx, wy, wz);
+    wheel.castShadow = true;
+    group.add(wheel);
+  });
+
+  // Random starting position along the road
+  const t0 = Math.random();
+  const x = road.x1 + (road.x2 - road.x1) * t0;
+  const z = road.z1 + (road.z2 - road.z1) * t0;
+  const angle = Math.atan2(road.x2 - road.x1, road.z2 - road.z1);
+  group.position.set(x, 0.06, z);
+  group.rotation.y = angle;
+
+  scene.add(group);
+
+  cars.push({
+    group, roadIdx, t: t0,
+    speed: 1.5 + Math.random() * 2.5, // units per second
+    direction: Math.random() > 0.5 ? 1 : -1,
+  });
 }
 
 function generateCity() {
+  // Clear cars
+  cars.forEach(c => {
+    c.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
+    scene.remove(c.group);
+  });
+  cars = [];
+  roadPaths = [];
+
   // Clear existing
   buildings.forEach(b => {
     b.group.traverse(c => {
@@ -457,6 +520,12 @@ function generateCity() {
   createRoad(3, -4, 4, 10);
   createRoad(8, -3, 7, 9);
   createRoad(-13, 2, 13, 2);
+
+  // Spawn cars on roads
+  for (let ri = 0; ri < roadPaths.length; ri++) {
+    const count = 1 + Math.floor(Math.random() * 2); // 1-2 cars per road
+    for (let ci = 0; ci < count; ci++) createCar(ri);
+  }
 
   updateHUD();
 }
@@ -828,6 +897,24 @@ function gameLoop() {
     // Update waves
     updateWaves(dt);
 
+    // Update cars
+    for (const car of cars) {
+      const road = roadPaths[car.roadIdx];
+      const len = Math.hypot(road.x2 - road.x1, road.z2 - road.z1);
+      car.t += (car.speed / len) * car.direction * dt;
+      // Wrap around
+      if (car.t > 1) car.t -= 1;
+      if (car.t < 0) car.t += 1;
+      // Position
+      const x = road.x1 + (road.x2 - road.x1) * car.t;
+      const z = road.z1 + (road.z2 - road.z1) * car.t;
+      car.group.position.x = x;
+      car.group.position.z = z;
+      car.group.rotation.y = car.direction > 0
+        ? Math.atan2(road.x2 - road.x1, road.z2 - road.z1)
+        : Math.atan2(road.x1 - road.x2, road.z1 - road.z2);
+    }
+
     // Check game over
     const alive = buildings.filter(b => b.alive).length;
     score = alive;
@@ -867,6 +954,14 @@ window.restartGame = function() {
     w.mesh.material.dispose();
   });
   waves = [];
+
+  // Clean cars
+  cars.forEach(c => {
+    c.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
+    scene.remove(c.group);
+  });
+  cars = [];
+  roadPaths = [];
 
   // Reset state
   resources = 150;

@@ -160,6 +160,22 @@ controls.maxPolarAngle = Math.PI / 2 + 0.3;
 controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
 controls.update();
 
+// City group — all generated decor goes here (easy cleanup)
+const cityGroup = new THREE.Group();
+scene.add(cityGroup);
+
+// ─── Disposal helper ────────────────────────────────────────
+function disposeGroup(group) {
+  group.traverse(c => {
+    if (c.geometry) c.geometry.dispose();
+    if (c.material) {
+      const mats = Array.isArray(c.material) ? c.material : [c.material];
+      mats.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+    }
+  });
+  group.clear();
+}
+
 // ─── Lighting ───────────────────────────────────────────────
 const ambient = new THREE.AmbientLight(0x8899cc, 1.2);
 scene.add(ambient);
@@ -349,7 +365,7 @@ function createBuilding(x, z, w, d, h, color) {
   }
 
   group.position.set(x, 0, z);
-  scene.add(group);
+  cityGroup.add(group);
   return { group, x, z, w, d, h, alive: true };
 }
 
@@ -378,7 +394,7 @@ function createTree(x, z) {
   }
   group.position.set(x, 0, z);
   group.scale.setScalar(0.6 + Math.random() * 0.8);
-  scene.add(group);
+  cityGroup.add(group);
   return group;
 }
 
@@ -393,7 +409,7 @@ function createRoad(x1, z1, x2, z2) {
   road.rotation.x = -Math.PI / 2; road.rotation.z = angle;
   road.position.set((x1 + x2) / 2, 0.01, (z1 + z2) / 2);
   road.receiveShadow = true;
-  scene.add(road);
+  cityGroup.add(road);
   roadPaths.push({ x1, z1, x2, z2 });
 }
 
@@ -440,7 +456,7 @@ function createCar(roadIdx) {
   group.position.set(x, 0.06, z);
   group.rotation.y = angle;
 
-  scene.add(group);
+  cityGroup.add(group);
 
   cars.push({
     group, roadIdx, t: t0,
@@ -468,7 +484,7 @@ function createSidewalks(road) {
       (road.z1 + road.z2) / 2 + offsetZ * side
     );
     sw.receiveShadow = true;
-    scene.add(sw);
+    cityGroup.add(sw);
   });
 }
 
@@ -488,7 +504,7 @@ function createCrosswalk(x, z, angle) {
       z - (i - (count - 1) / 2) * stripeW * 1.5 * Math.sin(angle)
     );
     stripe.receiveShadow = true;
-    scene.add(stripe);
+    cityGroup.add(stripe);
   }
 }
 
@@ -519,7 +535,7 @@ function createTrafficLight(x, z) {
     group.add(light);
   });
   group.position.set(x, 0, z);
-  scene.add(group);
+  cityGroup.add(group);
 }
 
 // ─── Pedestrian ──────────────────────────────────────────────
@@ -553,36 +569,16 @@ function createPedestrian(roadIdx, side) {
   const z = road.z1 + dz * t0 + offZ;
   group.position.set(x, 0.03, z);
   group.rotation.y = angle;
-  scene.add(group);
+  cityGroup.add(group);
   return { group, roadIdx, side, t: t0, speed: 0.3 + Math.random() * 0.5, direction: Math.random() > 0.5 ? 1 : -1 };
 }
 
 function generateCity() {
-  // Clear cars
-  cars.forEach(c => {
-    c.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
-    scene.remove(c.group);
-  });
+  // Clean entire city in one call
+  disposeGroup(cityGroup);
   cars = [];
   roadPaths = [];
-  // Clear pedestrians
-  pedestrians.forEach(p => {
-    p.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
-    scene.remove(p.group);
-  });
   pedestrians = [];
-
-  // Clear existing
-  buildings.forEach(b => {
-    b.group.traverse(c => {
-      if (c.geometry) c.geometry.dispose();
-      if (c.material) {
-        if (c.material.map) c.material.map.dispose();
-        c.material.dispose();
-      }
-    });
-    scene.remove(b.group);
-  });
   buildings = [];
 
   // ─── Roads FIRST — then buildings avoid them ───────────────
@@ -727,7 +723,7 @@ function generateCity() {
     canopy.castShadow = true;
     paraGroup.add(canopy);
     paraGroup.position.set(bx, 0.04, bz);
-    scene.add(paraGroup);
+    cityGroup.add(paraGroup);
 
     // Deckchair (transat)
     const chairGroup = new THREE.Group();
@@ -749,7 +745,7 @@ function generateCity() {
     }
     chairGroup.position.set(bx + 0.8, 0.04, bz + 0.4);
     chairGroup.rotation.y = Math.random() * Math.PI;
-    scene.add(chairGroup);
+    cityGroup.add(chairGroup);
 
     // Beachgoer (lying down)
     const personGroup = new THREE.Group();
@@ -767,7 +763,7 @@ function generateCity() {
     personGroup.add(head);
     personGroup.position.set(bx + 0.9 + (Math.random() - 0.5) * 0.5, 0.04, bz + 0.5);
     personGroup.rotation.y = Math.random() * Math.PI;
-    scene.add(personGroup);
+    cityGroup.add(personGroup);
   }
 
   // Beach ball
@@ -776,7 +772,7 @@ function generateCity() {
   const ball = new THREE.Mesh(ballGeo, ballMat);
   ball.position.set(3, 0.22, beachZ + 0.5);
   ball.castShadow = true;
-  scene.add(ball);
+  cityGroup.add(ball);
 
   // Spawn cars on roads
   for (let ri = 0; ri < roadPaths.length; ri++) {
@@ -1229,42 +1225,25 @@ function gameLoop() {
 
 // ─── Restart ────────────────────────────────────────────────
 window.restartGame = function() {
-  // Clean walls
+  // Clean gameplay objects
   walls.forEach(w => {
     scene.remove(w.group);
     w.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
   });
   walls = [];
-  // Clean trenches
   trenches.forEach(t => { scene.remove(t.mesh); t.mesh.geometry.dispose(); t.mesh.material.dispose(); });
   trenches = [];
-  // Clean waves
   waves.forEach(w => {
     scene.remove(w.mesh);
-    w.mesh.geometry.dispose();
-    w.mesh.material.dispose();
+    w.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
   });
   waves = [];
-
-  // Clean cars
-  cars.forEach(c => {
-    c.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
-    scene.remove(c.group);
-  });
-  cars = [];
-  roadPaths = [];
-  // Clean pedestrians
-  pedestrians.forEach(p => {
-    p.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
-    scene.remove(p.group);
-  });
-  pedestrians = [];
 
   // Reset state
   resources = 150;
   score = 0;
   gameOver = false;
-  waveCountdown = 15; // slightly faster on restart
+  waveCountdown = 15;
   waveNumber = 0;
   currentTier = 1;
   trenchMode = false;

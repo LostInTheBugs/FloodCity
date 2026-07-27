@@ -6,50 +6,76 @@
 <title>Flood City</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { overflow: hidden; background: #1a1a2e; font-family: 'Segoe UI', sans-serif; }
+  body { overflow: hidden; background: #0a0a1a; font-family: 'Segoe UI', system-ui, sans-serif; }
   canvas { display: block; }
 
   #hud {
-    position: fixed; top: 16px; left: 16px;
-    color: white; z-index: 10;
-    pointer-events: none;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.7);
+    position: fixed; top: 20px; left: 20px;
+    z-index: 10; pointer-events: none;
+    background: rgba(10,15,30,0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 14px;
+    padding: 16px 20px;
+    min-width: 200px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   }
-  #hud h1 { font-size: 1.8em; margin-bottom: 4px; letter-spacing: 2px; }
-  #hud .stat { font-size: 1.1em; margin: 2px 0; }
-  #hud .stat span { font-weight: bold; color: #ffd700; }
+  #hud h1 {
+    font-size: 1.5em; font-weight: 700; margin: 0 0 10px;
+    letter-spacing: 1px;
+    background: linear-gradient(135deg, #64b5f6, #42a5f5);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  #hud .stat {
+    font-size: 0.95em; margin: 4px 0;
+    color: #c0c8d8;
+    display: flex; justify-content: space-between; gap: 12px;
+  }
+  #hud .stat span {
+    font-weight: 700; color: #ffd54f;
+    font-variant-numeric: tabular-nums;
+  }
+  #hud .warning { color: #ff8a65 !important; }
 
   #message {
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    color: white; font-size: 2.5em; font-weight: bold; z-index: 20;
+    color: white; font-size: 2.5em; font-weight: 800; z-index: 20;
     text-align: center; pointer-events: none;
-    text-shadow: 0 0 20px rgba(0,0,0,0.8);
+    text-shadow: 0 0 40px rgba(0,0,0,0.9), 0 4px 8px rgba(0,0,0,0.6);
     opacity: 0; transition: opacity 0.4s;
+    letter-spacing: 1px;
   }
   #message.show { opacity: 1; }
 
   #controls {
-    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-    color: rgba(255,255,255,0.6); font-size: 0.85em;
-    z-index: 10; pointer-events: none;
-    text-align: center;
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.55); font-size: 0.82em;
+    z-index: 10; pointer-events: none; text-align: center;
+    background: rgba(10,15,30,0.6); backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 8px 18px; border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.08);
   }
   #controls kbd {
-    background: rgba(255,255,255,0.15);
-    padding: 2px 7px; border-radius: 4px;
-    margin: 0 2px;
+    background: rgba(255,255,255,0.1);
+    padding: 2px 7px; border-radius: 4px; margin: 0 2px;
+    border: 1px solid rgba(255,255,255,0.15);
   }
 
   #restart-btn {
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, 80px);
-    padding: 12px 36px; font-size: 1.2em;
-    background: #ff6b35; color: white; border: none;
-    border-radius: 8px; cursor: pointer; z-index: 25;
-    display: none; font-weight: bold;
-    box-shadow: 0 4px 20px rgba(255,107,53,0.4);
+    padding: 14px 40px; font-size: 1.15em;
+    background: linear-gradient(135deg, #ff6b35, #e55d2b);
+    color: white; border: none; border-radius: 10px; cursor: pointer;
+    z-index: 25; display: none; font-weight: 700;
+    box-shadow: 0 4px 24px rgba(255,107,53,0.5);
     transition: transform 0.15s, box-shadow 0.15s;
+    letter-spacing: 0.5px;
   }
-  #restart-btn:hover { transform: translate(-50%, 80px) scale(1.05); }
+  #restart-btn:hover { transform: translate(-50%, 80px) scale(1.06); }
   #restart-btn.visible { display: block; }
 </style>
 </head>
@@ -57,11 +83,11 @@
 
 <div id="hud">
   <h1>🌊 FLOOD CITY</h1>
-  <div class="stat">🏗️ Bâtiments : <span id="buildings-count">0</span></div>
-  <div class="stat">💰 Ressources : <span id="resources">100</span></div>
-  <div class="stat">📦 Murs : <span id="walls-count">0</span></div>
-  <div class="stat">🌊 Vague dans : <span id="wave-timer">--</span></div>
-  <div class="stat">⭐ Score : <span id="score">0</span></div>
+  <div class="stat">🏗️ Bâtiments <span id="buildings-count">0</span></div>
+  <div class="stat">💰 Ressources <span id="resources">100</span></div>
+  <div class="stat">🧱 Murs <span id="walls-count">0</span></div>
+  <div class="stat">⏱️ Prochaine vague <span id="wave-timer">--</span></div>
+  <div class="stat">⭐ Score <span id="score">0</span></div>
 </div>
 
 <div id="message"></div>
@@ -168,13 +194,21 @@ ocean.receiveShadow = true;
 scene.add(ocean);
 
 // Ocean border/beach
-const beachGeo = new THREE.PlaneGeometry(40, 3);
-const beachMat = new THREE.MeshStandardMaterial({ color: 0xd4b886, roughness: 0.95 });
+const beachGeo = new THREE.PlaneGeometry(40, 3.5);
+const beachMat = new THREE.MeshStandardMaterial({ color: 0xe8d5a8, roughness: 0.9 });
 const beach = new THREE.Mesh(beachGeo, beachMat);
 beach.rotation.x = -Math.PI / 2;
 beach.position.set(0, 0.02, -14);
 beach.receiveShadow = true;
 scene.add(beach);
+
+// Shoreline foam
+const foamGeo = new THREE.PlaneGeometry(40, 0.5);
+const foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
+const foamLine = new THREE.Mesh(foamGeo, foamMat);
+foamLine.rotation.x = -Math.PI / 2;
+foamLine.position.set(0, 0.05, -15.5);
+scene.add(foamLine);
 
 // ─── Data ───────────────────────────────────────────────────
 const WALL_COST = 10;
@@ -193,43 +227,160 @@ let waveCountdown = 20; // generous first wave timer
 let waveNumber = 0;
 let lastWaveTime = performance.now() / 1000;
 
-// Building palette
+// Building palette — warmer, more varied
 const BUILDING_COLORS = [
-  0xd4a574, 0xc4956a, 0xb8865e, 0xe8c9a0, 0xdbb88c,
-  0x8cb4d4, 0x7aa3c0, 0x9fc5e8, 0x6d9ab8, 0xb0d4e8,
-  0xc9c9c9, 0xb8b8b8, 0xa0a0a0, 0xd0d0d0, 0xbfbfbf,
-  0xe8d5b7, 0xd4c4a8, 0xc8b898, 0xf0dcc0, 0xdcc8a8
+  0xe8c9a0, 0xdbb88c, 0xd4a574, 0xc4956a, 0xf0dcc0,
+  0xa8c8e8, 0x90b8d8, 0xb8d4f0, 0x7aa8c8, 0xc0ddf0,
+  0xe0d0b8, 0xd4c4a8, 0xc8b898, 0xecdcc4, 0xdcc8a8,
+  0xd0c0a8, 0xc8b498, 0xe8d8c0, 0xccbba0, 0xb8a888
 ];
+
+// ─── Window texture generator ───────────────────────────────
+function createWindowTexture(baseColor) {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  const r = (baseColor >> 16) & 0xff;
+  const g = (baseColor >> 8) & 0xff;
+  const b = baseColor & 0xff;
+  ctx.fillStyle = `rgb(${r},${g},${b})`;
+  ctx.fillRect(0, 0, size, size);
+
+  const cols = 4, rows = 6;
+  const marginX = 8, marginY = 6;
+  const cellW = (size - marginX * 2) / cols;
+  const cellH = (size - marginY * 2) / rows;
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const wx = marginX + col * cellW + cellW * 0.15;
+      const wy = marginY + row * cellH + cellH * 0.15;
+      const ww = cellW * 0.7;
+      const wh = cellH * 0.7;
+
+      const lit = Math.random() > 0.3;
+      if (lit) {
+        const warm = Math.random() > 0.4;
+        ctx.fillStyle = warm
+          ? `rgba(255,220,150,${0.5 + Math.random() * 0.4})`
+          : `rgba(180,210,255,${0.3 + Math.random() * 0.3})`;
+      } else {
+        ctx.fillStyle = 'rgba(30,30,50,0.5)';
+      }
+      ctx.fillRect(wx, wy, ww, wh);
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(wx, wy, ww, wh);
+    }
+  }
+  return new THREE.CanvasTexture(canvas);
+}
 
 // ─── Building creation ──────────────────────────────────────
 function createBuilding(x, z, w, d, h, color) {
-  const geo = new THREE.BoxGeometry(w, h, d);
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.1 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(x, h / 2, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
+  const group = new THREE.Group();
 
-  // Rooftop accent
-  if (h > 2.5) {
-    const roofGeo = new THREE.CylinderGeometry(0.15, 0.15, h * 0.15, 8);
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.4, metalness: 0.6 });
-    const roof = new THREE.Mesh(roofGeo, roofMat);
-    roof.position.set(x, h + h * 0.075, z);
-    roof.castShadow = true;
-    scene.add(roof);
+  // Body with window texture
+  const bodyGeo = new THREE.BoxGeometry(w, h, d);
+  const texture = createWindowTexture(color);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(Math.max(1, Math.floor(w)), Math.max(1, Math.floor(h / 2)));
+  const bodyMat = new THREE.MeshStandardMaterial({
+    map: texture, roughness: 0.6, metalness: 0.05,
+    color: 0xffffff
+  });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = h / 2;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+
+  // Roof
+  const roofH = 0.15 + h * 0.05;
+  const roofGeo = new THREE.BoxGeometry(w + 0.15, roofH, d + 0.15);
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x5a4a3a, roughness: 0.5, metalness: 0.1 });
+  const roof = new THREE.Mesh(roofGeo, roofMat);
+  roof.position.y = h + roofH / 2;
+  roof.castShadow = true;
+  group.add(roof);
+
+  // Antenna + red light for tall buildings
+  if (h > 3.5) {
+    const antGeo = new THREE.CylinderGeometry(0.06, 0.06, h * 0.18, 6);
+    const antMat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.3, metalness: 0.8 });
+    const ant = new THREE.Mesh(antGeo, antMat);
+    ant.position.y = h + roofH + h * 0.09;
+    ant.castShadow = true;
+    group.add(ant);
+    const lightGeo = new THREE.SphereGeometry(0.1, 4, 4);
+    const lightMat = new THREE.MeshBasicMaterial({ color: 0xff3333 });
+    const light = new THREE.Mesh(lightGeo, lightMat);
+    light.position.y = h + roofH + h * 0.18 + 0.1;
+    group.add(light);
   }
 
-  return { mesh, x, z, w, d, h, alive: true };
+  group.position.set(x, 0, z);
+  scene.add(group);
+  return { group, x, z, w, d, h, alive: true };
+}
+
+// ─── Tree ───────────────────────────────────────────────────
+function createTree(x, z) {
+  const group = new THREE.Group();
+  const trunkH = 0.7 + Math.random() * 1.0;
+  const trunkR = 0.08 + Math.random() * 0.12;
+  const trunkGeo = new THREE.CylinderGeometry(trunkR * 0.6, trunkR, trunkH, 5);
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.9 });
+  const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+  trunk.position.y = trunkH / 2;
+  trunk.castShadow = true;
+  group.add(trunk);
+  const colors = [0x3d7a28, 0x4a8a30, 0x357020, 0x4d9038];
+  for (let i = 0; i < 3; i++) {
+    const r = 0.35 + Math.random() * 0.5;
+    const fh = 0.5 + Math.random() * 0.7;
+    const c = colors[Math.floor(Math.random() * colors.length)];
+    const fGeo = new THREE.ConeGeometry(r, fh, 6);
+    const fMat = new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 });
+    const f = new THREE.Mesh(fGeo, fMat);
+    f.position.y = trunkH + i * fh * 0.45;
+    f.castShadow = true; f.receiveShadow = true;
+    group.add(f);
+  }
+  group.position.set(x, 0, z);
+  group.scale.setScalar(0.6 + Math.random() * 0.8);
+  scene.add(group);
+  return group;
+}
+
+// ─── Road ────────────────────────────────────────────────────
+function createRoad(x1, z1, x2, z2) {
+  const dx = x2 - x1, dz = z2 - z1;
+  const len = Math.sqrt(dx * dx + dz * dz);
+  const angle = Math.atan2(dx, dz);
+  const geo = new THREE.PlaneGeometry(0.7 + Math.random() * 0.4, len);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x3d3d45, roughness: 0.95 });
+  const road = new THREE.Mesh(geo, mat);
+  road.rotation.x = -Math.PI / 2; road.rotation.z = angle;
+  road.position.set((x1 + x2) / 2, 0.01, (z1 + z2) / 2);
+  road.receiveShadow = true;
+  scene.add(road);
 }
 
 function generateCity() {
   // Clear existing
   buildings.forEach(b => {
-    scene.remove(b.mesh);
-    if (b.mesh.material) b.mesh.material.dispose();
-    b.mesh.geometry.dispose();
+    b.group.traverse(c => {
+      if (c.geometry) c.geometry.dispose();
+      if (c.material) {
+        if (c.material.map) c.material.map.dispose();
+        c.material.dispose();
+      }
+    });
+    scene.remove(b.group);
   });
   buildings = [];
 
@@ -254,19 +405,35 @@ function generateCity() {
     const building = createBuilding(x, z, w, d, h, color);
     buildings.push(building);
     placed.push({ x, z });
+
+    // Place 2-4 trees nearby
+    for (let t = 0; t < 2 + Math.floor(Math.random() * 3); t++) {
+      const tx = x + (Math.random() - 0.5) * (w + 3);
+      const tz = z + (Math.random() - 0.5) * (d + 3);
+      if (!placed.some(p => Math.hypot(p.x - tx, p.z - tz) < 1.0)) {
+        createTree(tx, tz);
+      }
+    }
   }
 
   // Add a few larger "downtown" buildings
-  for (let i = 0; i < 5; i++) {
-    const x = -6 + i * 3;
-    const z = 3 + Math.random() * 4;
-    const w = 1.5 + Math.random() * 0.8;
-    const d = 1.5 + Math.random() * 0.8;
-    const h = 5 + Math.random() * 6;
-    const color = 0x8899bb + Math.floor(Math.random() * 0x111122);
+  for (let i = 0; i < 6; i++) {
+    const x = -5.5 + i * 2.5 + (Math.random() - 0.5) * 0.5;
+    const z = 2 + Math.random() * 5;
+    const w = 1.4 + Math.random() * 0.8;
+    const d = 1.4 + Math.random() * 0.8;
+    const h = 5 + Math.random() * 7;
+    const color = 0x8899bb + Math.floor(Math.random() * 0x223344);
     const building = createBuilding(x, z, w, d, h, color);
     buildings.push(building);
   }
+
+  // Roads
+  createRoad(-8, -5, -7, 10);
+  createRoad(-3, -4, -2, 11);
+  createRoad(3, -4, 4, 10);
+  createRoad(8, -3, 7, 9);
+  createRoad(-13, 2, 13, 2);
 
   updateHUD();
 }
@@ -284,21 +451,25 @@ function placeWall(worldPos) {
   // Don't place in ocean
   if (worldPos.z < -TERRAIN_HALF + 2) return false;
 
-  const geo = new THREE.BoxGeometry(1.2, 0.7, 0.5);
-  const mat = new THREE.MeshStandardMaterial({ color: 0xc4a265, roughness: 0.85, metalness: 0.05 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(worldPos.x, 0.35, worldPos.z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
+  const geo = new THREE.BoxGeometry(1.1, 0.55, 0.45);
+  const mat = new THREE.MeshStandardMaterial({ color: 0xd4b896, roughness: 0.8, metalness: 0.02 });
+  const bag = new THREE.Mesh(geo, mat);
+  bag.position.y = 0.28;
+  bag.castShadow = true;
+  bag.receiveShadow = true;
+  const group = new THREE.Group();
+  group.add(bag);
 
-  const wall = {
-    mesh,
-    x: worldPos.x,
-    z: worldPos.z,
-    hp: 100,
-    maxHp: 100,
-  };
+  const topGeo = new THREE.BoxGeometry(1.0, 0.4, 0.4);
+  const topBag = new THREE.Mesh(topGeo, mat.clone());
+  topBag.position.y = 0.65;
+  topBag.castShadow = true;
+  group.add(topBag);
+
+  group.position.set(worldPos.x, 0, worldPos.z);
+  scene.add(group);
+
+  const wall = { group, x: worldPos.x, z: worldPos.z, hp: 100, maxHp: 100 };
   walls.push(wall);
 
   resources -= WALL_COST;
@@ -339,7 +510,36 @@ function spawnWave() {
     destroyedBuildings: 0,
   });
 
-  flashMessage(`🌊 Vague #${waveNumber} !`, 1500);
+  flashMessage(`🌊 Vague #${waveNumber} !`, 1800);
+}
+
+// ─── Spray particles ───────────────────────────────────────
+function spawnSpray(x, y, z) {
+  const count = 3;
+  for (let i = 0; i < count; i++) {
+    const geo = new THREE.SphereGeometry(0.07 + Math.random() * 0.09, 3, 3);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 });
+    const drop = new THREE.Mesh(geo, mat);
+    drop.position.set(x, y, z);
+    drop.userData = {
+      vy: 0.5 + Math.random() * 3, vx: (Math.random() - 0.5) * 1.5,
+      vz: (Math.random() - 0.5) * 1, life: 0.5 + Math.random() * 0.5
+    };
+    scene.add(drop);
+    const endTime = performance.now() / 1000 + drop.userData.life;
+    function anim() {
+      const t = performance.now() / 1000;
+      if (t > endTime) { scene.remove(drop); drop.geometry.dispose(); drop.material.dispose(); return; }
+      drop.position.y += drop.userData.vy * 0.02;
+      drop.position.x += drop.userData.vx * 0.02;
+      drop.position.z += drop.userData.vz * 0.02;
+      drop.userData.vy -= 1.5 * 0.02;
+      drop.material.opacity = Math.max(0, (endTime - t) / drop.userData.life * 0.7);
+      drop.scale.setScalar(Math.max(0.2, (endTime - t) / drop.userData.life));
+      requestAnimationFrame(anim);
+    }
+    anim();
+  }
 }
 
 function updateWaves(dt) {
@@ -348,6 +548,18 @@ function updateWaves(dt) {
     wave.z += wave.speed * dt;
     wave.mesh.position.z = wave.z;
     wave.mesh.position.y = wave.height / 2;
+
+    // Spray along the wave front
+    wave.sprayTimer = (wave.sprayTimer || 0) - dt;
+    if (wave.sprayTimer <= 0) {
+      wave.sprayTimer = 0.06;
+      for (let s = 0; s < 4; s++) {
+        const sx = (Math.random() - 0.5) * wave.width * 0.85;
+        const sy = wave.height * 0.6 + Math.random() * wave.height * 0.4;
+        const sz = wave.z + 1 + Math.random() * 0.4;
+        spawnSpray(sx, sy, sz);
+      }
+    }
 
     // Scale wave down as it loses HP
     const hpRatio = wave.hp / wave.maxHp;
@@ -366,16 +578,16 @@ function updateWaves(dt) {
 
         // Update wall appearance
         const wallHpRatio = Math.max(0, wall.hp / wall.maxHp);
-        wall.mesh.material.color.setHex(
-          wallHpRatio > 0.5 ? 0xc4a265 :
-          wallHpRatio > 0.25 ? 0xb8954a : 0x8a5a2a
-        );
-        wall.mesh.scale.y = Math.max(0.2, wallHpRatio);
+        wall.group.children.forEach(c => {
+          if (c.material && c.material.color) {
+            c.material.color.setHex(wallHpRatio > 0.5 ? 0xd4b896 : wallHpRatio > 0.25 ? 0xb8954a : 0x8a5a2a);
+          }
+        });
+        wall.group.scale.y = Math.max(0.3, wallHpRatio);
 
         if (wall.hp <= 0) {
-          scene.remove(wall.mesh);
-          wall.mesh.geometry.dispose();
-          wall.mesh.material.dispose();
+          scene.remove(wall.group);
+          wall.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
           walls.splice(i, 1);
         }
       }
@@ -389,9 +601,14 @@ function updateWaves(dt) {
         // Building hit!
         wave.hp -= building.h * 8;
         building.alive = false;
-        scene.remove(building.mesh);
-        building.mesh.geometry.dispose();
-        building.mesh.material.dispose();
+        scene.remove(building.group);
+        building.group.traverse(c => {
+          if (c.geometry) c.geometry.dispose();
+          if (c.material) {
+            if (c.material.map) c.material.map.dispose();
+            c.material.dispose();
+          }
+        });
         wave.destroyedBuildings++;
 
         // Smoke particles
@@ -464,17 +681,22 @@ function animateOcean(time) {
   for (let i = 0; i < positions.count; i++) {
     const x = positions.getX(i);
     const y = positions.getY(i);
-    const z = 0.15 * Math.sin(x * 1.3 + time * 1.8) * Math.cos(y * 1.7 + time * 1.5)
-            + 0.1 * Math.sin(x * 2.5 + time * 2.3) * Math.sin(y * 2.1 - time * 1.2);
+    const z = 0.2 * Math.sin(x * 1.1 + time * 1.6) * Math.cos(y * 1.5 + time * 1.4)
+            + 0.12 * Math.sin(x * 2.3 + time * 2.1) * Math.sin(y * 1.9 - time * 1.3)
+            + 0.06 * Math.cos(x * 3.7 + time * 2.8) * Math.cos(y * 3.1 - time * 1.9);
     positions.setZ(i, z);
   }
   positions.needsUpdate = true;
+  // Foam pulse
+  foamLine.material.opacity = 0.35 + Math.sin(time * 2.2) * 0.12;
 }
 
 // ─── HUD ────────────────────────────────────────────────────
 function updateHUD() {
   const alive = buildings.filter(b => b.alive).length;
   $buildings.textContent = alive;
+  if (alive <= 8) $buildings.classList.add('warning');
+  else $buildings.classList.remove('warning');
   $resources.textContent = Math.floor(resources);
   $wallsCount.textContent = walls.length;
   $score.textContent = score;
@@ -564,9 +786,8 @@ function gameLoop() {
 window.restartGame = function() {
   // Clean walls
   walls.forEach(w => {
-    scene.remove(w.mesh);
-    w.mesh.geometry.dispose();
-    w.mesh.material.dispose();
+    scene.remove(w.group);
+    w.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
   });
   walls = [];
 

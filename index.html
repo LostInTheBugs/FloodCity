@@ -77,6 +77,11 @@
   }
   #restart-btn:hover { transform: translate(-50%, 80px) scale(1.06); }
   #restart-btn.visible { display: block; }
+
+  @keyframes alertFlash {
+    0%, 100% { box-shadow: inset 0 0 0 rgba(255,0,0,0); }
+    50% { box-shadow: inset 0 0 60px rgba(255,0,0,0.4); }
+  }
 </style>
 </head>
 <body>
@@ -86,6 +91,8 @@
   <div class="stat">🏗️ Bâtiments <span id="buildings-count">0</span></div>
   <div class="stat">💰 Ressources <span id="resources">100</span></div>
   <div class="stat">🧱 Murs <span id="walls-count">0</span></div>
+  <div class="stat">🕳️ Tranchées <span id="trenches-count">0</span></div>
+  <div class="stat" style="color:#64b5f6;font-weight:600;margin-top:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;" id="mode-indicator">🧱 Mode mur · Tier 1</div>
   <div class="stat">⏱️ Prochaine vague <span id="wave-timer">--</span></div>
   <div class="stat">⭐ Score <span id="score">0</span></div>
 </div>
@@ -94,9 +101,10 @@
 <button id="restart-btn" onclick="restartGame()">🔄 Rejouer</button>
 
 <div id="controls">
-  🖱️ <kbd>Clic gauche</kbd> Placer un mur &nbsp;|&nbsp;
-  🖱️ <kbd>Clic droit</kbd> Tourner &nbsp;|&nbsp;
-  🖱️ <kbd>Molette</kbd> Zoom
+  🖱️ <kbd>Clic</kbd> Placer &nbsp;|&nbsp;
+  ⌨️ <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> Tier &nbsp;|&nbsp;
+  <kbd>T</kbd> Tranchée &nbsp;|&nbsp;
+  <kbd>R</kbd> Recommencer
 </div>
 
 <script type="importmap">
@@ -116,10 +124,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const $buildings = document.getElementById('buildings-count');
 const $resources = document.getElementById('resources');
 const $wallsCount = document.getElementById('walls-count');
+const $trenchesCount = document.getElementById('trenches-count');
 const $waveTimer = document.getElementById('wave-timer');
 const $score = document.getElementById('score');
 const $message = document.getElementById('message');
 const $restart = document.getElementById('restart-btn');
+const $mode = document.getElementById('mode-indicator');
 
 // ─── Three.js setup ─────────────────────────────────────────
 const scene = new THREE.Scene();
@@ -212,20 +222,33 @@ scene.add(foamLine);
 
 // ─── Data ───────────────────────────────────────────────────
 const WALL_COST = 10;
-const RESOURCE_REGEN = 0.3; // per second
-const WAVE_INTERVAL_MIN = 14; // seconds between waves
+const RESOURCE_REGEN = 0.3;
+const WAVE_INTERVAL_MIN = 14;
 const WAVE_INTERVAL_MAX = 22;
-const TERRAIN_HALF = 17; // half of usable terrain area
+const TERRAIN_HALF = 17;
+
+// Wall tiers
+const WALL_TIERS = {
+  1: { name: 'Sac de sable', cost: 10, hp: 100, color: 0xd4b896, geoH: 0.55 },
+  2: { name: 'Renforcé', cost: 25, hp: 300, color: 0x8b7355, geoH: 0.7 },
+  3: { name: 'Béton', cost: 50, hp: 600, color: 0x888888, geoH: 0.9 },
+};
+const TRENCH_COST = 5;
+const TRENCH_DAMAGE = 18; // per second when wave is over trench
+const TRENCH_SLOW = 0.5; // speed multiplier over trench
 
 let resources = 150;
 let score = 0;
 let buildings = [];
 let walls = [];
+let trenches = [];
 let waves = [];
 let gameOver = false;
-let waveCountdown = 20; // generous first wave timer
+let waveCountdown = 20;
 let waveNumber = 0;
-let lastWaveTime = performance.now() / 1000;
+let currentTier = 1;        // 1, 2, 3
+let trenchMode = false;     // T toggles
+let alertTriggered = false; // early warning flag
 
 // Building palette — warmer, more varied
 const BUILDING_COLORS = [
@@ -441,38 +464,56 @@ function generateCity() {
 // ─── Wall placement ─────────────────────────────────────────
 function placeWall(worldPos) {
   if (gameOver) return false;
-  if (resources < WALL_COST) {
-    flashMessage('Pas assez de ressources !');
+  const tier = WALL_TIERS[currentTier];
+  if (resources < tier.cost) {
+    flashMessage(`Pas assez de ressources (${tier.cost}☼ pour ${tier.name}) !`);
     return false;
   }
-
-  // Check bounds
   if (Math.abs(worldPos.x) > TERRAIN_HALF || Math.abs(worldPos.z) > TERRAIN_HALF) return false;
-  // Don't place in ocean
   if (worldPos.z < -TERRAIN_HALF + 2) return false;
 
-  const geo = new THREE.BoxGeometry(1.1, 0.55, 0.45);
-  const mat = new THREE.MeshStandardMaterial({ color: 0xd4b896, roughness: 0.8, metalness: 0.02 });
-  const bag = new THREE.Mesh(geo, mat);
-  bag.position.y = 0.28;
-  bag.castShadow = true;
-  bag.receiveShadow = true;
   const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: tier.color, roughness: 0.8, metalness: 0.05 });
+
+  // Bottom bag
+  const geo = new THREE.BoxGeometry(1.1, tier.geoH, 0.45);
+  const bag = new THREE.Mesh(geo, mat);
+  bag.position.y = tier.geoH / 2;
+  bag.castShadow = true; bag.receiveShadow = true;
   group.add(bag);
 
-  const topGeo = new THREE.BoxGeometry(1.0, 0.4, 0.4);
+  // Top bag (smaller)
+  const topGeo = new THREE.BoxGeometry(1.0, tier.geoH * 0.7, 0.4);
   const topBag = new THREE.Mesh(topGeo, mat.clone());
-  topBag.position.y = 0.65;
+  topBag.position.y = tier.geoH + tier.geoH * 0.35;
   topBag.castShadow = true;
   group.add(topBag);
 
   group.position.set(worldPos.x, 0, worldPos.z);
   scene.add(group);
 
-  const wall = { group, x: worldPos.x, z: worldPos.z, hp: 100, maxHp: 100 };
-  walls.push(wall);
+  walls.push({ group, x: worldPos.x, z: worldPos.z, hp: tier.hp, maxHp: tier.hp, tier: currentTier });
+  resources -= tier.cost;
+  updateHUD();
+  return true;
+}
 
-  resources -= WALL_COST;
+// ─── Trench placement ───────────────────────────────────────
+function placeTrench(worldPos) {
+  if (gameOver) return false;
+  if (resources < TRENCH_COST) { flashMessage('Pas assez de ressources !'); return false; }
+  if (Math.abs(worldPos.x) > TERRAIN_HALF || Math.abs(worldPos.z) > TERRAIN_HALF) return false;
+  if (worldPos.z < -TERRAIN_HALF + 2) return false;
+
+  const geo = new THREE.BoxGeometry(1.0, 0.15, 0.9);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 1.0, metalness: 0 });
+  const trenchMesh = new THREE.Mesh(geo, mat);
+  trenchMesh.position.set(worldPos.x, -0.06, worldPos.z);
+  trenchMesh.receiveShadow = true;
+  scene.add(trenchMesh);
+
+  trenches.push({ mesh: trenchMesh, x: worldPos.x, z: worldPos.z });
+  resources -= TRENCH_COST;
   updateHUD();
   return true;
 }
@@ -566,6 +607,14 @@ function updateWaves(dt) {
     const currentScale = 0.3 + hpRatio * 0.7;
     wave.mesh.scale.set(currentScale, currentScale * 0.8 + 0.2, 1);
     wave.mesh.material.opacity = 0.3 + hpRatio * 0.4;
+
+    // Trench effect — slow down and damage wave
+    for (const trench of trenches) {
+      if (Math.abs(trench.z - wave.z) < 1.2 && Math.abs(trench.x) < wave.width / 2 * currentScale + 0.5) {
+        wave.speed *= (1 - (1 - TRENCH_SLOW) * dt * 4); // gradual slow
+        wave.hp -= TRENCH_DAMAGE * dt;
+      }
+    }
 
     // Check collisions with walls
     for (let i = walls.length - 1; i >= 0; i--) {
@@ -699,7 +748,10 @@ function updateHUD() {
   else $buildings.classList.remove('warning');
   $resources.textContent = Math.floor(resources);
   $wallsCount.textContent = walls.length;
+  $trenchesCount.textContent = trenches.length;
   $score.textContent = score;
+  const tier = WALL_TIERS[currentTier];
+  $mode.textContent = trenchMode ? '🕳️ Mode tranchée (5☼)' : `🧱 ${tier.name} (${tier.cost}☼)`;
 }
 
 function flashMessage(text, duration = 2000) {
@@ -716,21 +768,17 @@ const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
 renderer.domElement.addEventListener('click', (e) => {
   if (gameOver) return;
-
   mouse.x = (e.clientX / innerWidth) * 2 - 1;
   mouse.y = -(e.clientY / innerHeight) * 2 + 1;
-
   raycaster.setFromCamera(mouse, camera);
   const intersection = new THREE.Vector3();
   raycaster.ray.intersectPlane(groundPlane, intersection);
-
   if (intersection) {
     const snapped = new THREE.Vector3(
-      Math.round(intersection.x * 2) / 2, // snap to half-unit grid
-      0,
+      Math.round(intersection.x * 2) / 2, 0,
       Math.round(intersection.z * 2) / 2
     );
-    placeWall(snapped);
+    if (trenchMode) placeTrench(snapped); else placeWall(snapped);
   }
 });
 
@@ -751,9 +799,16 @@ function gameLoop() {
 
     // Wave countdown
     waveCountdown -= dt;
+    // Early warning alert at 10s
+    if (!alertTriggered && waveCountdown <= 10 && waveCountdown > 0) {
+      alertTriggered = true;
+      flashMessage('⚠️  ALERTE INONDATION  ⚠️', 2500);
+      document.body.style.animation = 'alertFlash 0.5s ease-in-out 3';
+      setTimeout(() => document.body.style.animation = '', 2000);
+    }
     if (waveCountdown <= 0) {
       spawnWave();
-      // Intervals get slightly shorter as game progresses
+      alertTriggered = false;
       const baseInterval = WAVE_INTERVAL_MIN + Math.random() * (WAVE_INTERVAL_MAX - WAVE_INTERVAL_MIN);
       waveCountdown = Math.max(8, baseInterval - waveNumber * 0.5);
     }
@@ -790,7 +845,9 @@ window.restartGame = function() {
     w.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
   });
   walls = [];
-
+  // Clean trenches
+  trenches.forEach(t => { scene.remove(t.mesh); t.mesh.geometry.dispose(); t.mesh.material.dispose(); });
+  trenches = [];
   // Clean waves
   waves.forEach(w => {
     scene.remove(w.mesh);
@@ -805,7 +862,9 @@ window.restartGame = function() {
   gameOver = false;
   waveCountdown = 15; // slightly faster on restart
   waveNumber = 0;
-  lastWaveTime = performance.now() / 1000;
+  currentTier = 1;
+  trenchMode = false;
+  alertTriggered = false;
 
   $message.classList.remove('show');
   $restart.classList.remove('visible');
@@ -823,9 +882,11 @@ window.addEventListener('resize', () => {
 
 // ─── Keyboard shortcuts ─────────────────────────────────────
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'r' || e.key === 'R') {
-    restartGame();
-  }
+  if (e.key === 'r' || e.key === 'R') { restartGame(); return; }
+  if (e.key === '1') { currentTier = 1; trenchMode = false; flashMessage('🧱 Sac de sable (10☼)', 800); updateHUD(); }
+  if (e.key === '2') { currentTier = 2; trenchMode = false; flashMessage('🛡️ Renforcé (25☼)', 800); updateHUD(); }
+  if (e.key === '3') { currentTier = 3; trenchMode = false; flashMessage('🧱 Béton (50☼)', 800); updateHUD(); }
+  if (e.key === 't' || e.key === 'T') { trenchMode = !trenchMode; flashMessage(trenchMode ? '🕳️ Mode tranchée (5☼)' : '🧱 Mode mur', 800); updateHUD(); }
 });
 
 // ─── Start ──────────────────────────────────────────────────

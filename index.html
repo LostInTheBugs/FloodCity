@@ -470,18 +470,47 @@ function generateCity() {
   });
   buildings = [];
 
+  // ─── Roads FIRST — then buildings avoid them ───────────────
+  // Vertical avenues (stop before sea)
+  createRoad(-8, -12, -8, 17);
+  createRoad(3, -12, 3, 17);
+  // Horizontal streets (full width)
+  createRoad(-17, -4, 17, -4);
+  createRoad(-17, 5, 17, 5);
+  // Beachfront connector (parallel to sea, links avenues)
+  createRoad(-17, -11, 17, -11);
+
+  // Helper: check if a point is too close to any road
+  function isOnRoad(px, pz, margin = 2.2) {
+    for (const r of roadPaths) {
+      const dx = r.x2 - r.x1, dz = r.z2 - r.z1;
+      const lenSq = dx * dx + dz * dz;
+      if (lenSq < 0.01) continue;
+      // Project point onto road segment
+      let t = ((px - r.x1) * dx + (pz - r.z1) * dz) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+      const cx = r.x1 + t * dx, cz = r.z1 + t * dz;
+      const dist = Math.hypot(px - cx, pz - cz);
+      if (dist < margin) return true;
+    }
+    return false;
+  }
+
+  // ─── Buildings ──────────────────────────────────────────────
   const count = 25;
   const placed = [];
-  const minDist = 2.5;
+  const minDist = 3;
 
   for (let i = 0; i < count; i++) {
-    let attempts = 0;
-    let x, z;
+    let attempts = 0, x, z;
     do {
       x = (Math.random() - 0.5) * (TERRAIN_HALF * 2 - 4);
-      z = (Math.random() - 0.5) * (TERRAIN_HALF * 2 - 6) + 1; // bias away from ocean
+      z = (Math.random() - 0.5) * (TERRAIN_HALF * 2 - 6) + 1;
       attempts++;
-    } while (attempts < 50 && placed.some(p => Math.hypot(p.x - x, p.z - z) < minDist));
+    } while (attempts < 50 && (
+      placed.some(p => Math.hypot(p.x - x, p.z - z) < minDist) ||
+      isOnRoad(x, z)
+    ));
 
     const w = 0.8 + Math.random() * 1.4;
     const d = 0.8 + Math.random() * 1.4;
@@ -492,20 +521,24 @@ function generateCity() {
     buildings.push(building);
     placed.push({ x, z });
 
-    // Place 2-4 trees nearby
+    // Place 2-4 trees nearby (also avoid roads)
     for (let t = 0; t < 2 + Math.floor(Math.random() * 3); t++) {
       const tx = x + (Math.random() - 0.5) * (w + 3);
       const tz = z + (Math.random() - 0.5) * (d + 3);
-      if (!placed.some(p => Math.hypot(p.x - tx, p.z - tz) < 1.0)) {
+      if (!placed.some(p => Math.hypot(p.x - tx, p.z - tz) < 1.0) && !isOnRoad(tx, tz, 1.5)) {
         createTree(tx, tz);
       }
     }
   }
 
-  // Add a few larger "downtown" buildings
+  // Downtown cluster (higher density, between the two avenues)
   for (let i = 0; i < 6; i++) {
-    const x = -5.5 + i * 2.5 + (Math.random() - 0.5) * 0.5;
-    const z = 2 + Math.random() * 5;
+    let x, z, attempts = 0;
+    do {
+      x = -6 + i * 2.5 + (Math.random() - 0.5) * 0.5;
+      z = -2 + Math.random() * 4;
+      attempts++;
+    } while (attempts < 30 && isOnRoad(x, z, 2.5));
     const w = 1.4 + Math.random() * 0.8;
     const d = 1.4 + Math.random() * 0.8;
     const h = 5 + Math.random() * 7;
@@ -514,16 +547,9 @@ function generateCity() {
     buildings.push(building);
   }
 
-  // Roads
-  createRoad(-8, -5, -7, 10);
-  createRoad(-3, -4, -2, 11);
-  createRoad(3, -4, 4, 10);
-  createRoad(8, -3, 7, 9);
-  createRoad(-13, 2, 13, 2);
-
   // Spawn cars on roads
   for (let ri = 0; ri < roadPaths.length; ri++) {
-    const count = 1 + Math.floor(Math.random() * 2); // 1-2 cars per road
+    const count = 1 + Math.floor(Math.random() * 2);
     for (let ci = 0; ci < count; ci++) createCar(ri);
   }
 

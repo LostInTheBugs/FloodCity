@@ -195,6 +195,24 @@ scene.add(sun);
 const hemi = new THREE.HemisphereLight(0x87ceeb, 0x3d5a3d, 0.6);
 scene.add(hemi);
 
+// ─── Data ───────────────────────────────────────────────────
+const WALL_COST = 10;
+const RESOURCE_REGEN = 1.0;   // per second
+const RESOURCE_CAP = 300;
+const WAVE_INTERVAL_MIN = 14;
+const WAVE_INTERVAL_MAX = 22;
+const TERRAIN_HALF = 17;
+
+// Wall tiers
+const WALL_TIERS = {
+  1: { name: 'Sac de sable', cost: 10, hp: 100, color: 0xd4b896, geoH: 0.55 },
+  2: { name: 'Renforcé', cost: 25, hp: 300, color: 0x8b7355, geoH: 0.7 },
+  3: { name: 'Béton', cost: 50, hp: 600, color: 0x888888, geoH: 0.9 },
+};
+const TRENCH_COST = 5;
+const TRENCH_DAMAGE = 8;  // per second when wave is over trench
+const TRENCH_HP = 40;     // trench HP — gets consumed as it damages waves
+
 // ─── Ground ─────────────────────────────────────────────────
 const groundGeo = new THREE.PlaneGeometry(TERRAIN_HALF * 2 + 6, TERRAIN_HALF * 2 + 6);
 const groundMat = new THREE.MeshStandardMaterial({ color: 0x6b9e45, roughness: 0.85 });
@@ -210,11 +228,11 @@ scene.add(grid);
 
 // ─── Ocean ──────────────────────────────────────────────────
 // Large static ocean (invisible edges)
-const farOceanGeo = new THREE.PlaneGeometry(200, 200);
+const farOceanGeo = new THREE.PlaneGeometry(400, 200);
 const farOceanMat = new THREE.MeshStandardMaterial({ color: 0x1155aa, roughness: 0.15, metalness: 0.8 });
 const farOcean = new THREE.Mesh(farOceanGeo, farOceanMat);
 farOcean.rotation.x = -Math.PI / 2;
-farOcean.position.set(0, 0.04, -30);
+farOcean.position.set(0, 0.03, -115.5);
 scene.add(farOcean);
 
 // Animated near ocean
@@ -245,24 +263,6 @@ const foamLine = new THREE.Mesh(foamGeo, foamMat);
 foamLine.rotation.x = -Math.PI / 2;
 foamLine.position.set(0, 0.05, -15.5);
 scene.add(foamLine);
-
-// ─── Data ───────────────────────────────────────────────────
-const WALL_COST = 10;
-const RESOURCE_REGEN = 1.0;   // per second
-const RESOURCE_CAP = 300;
-const WAVE_INTERVAL_MIN = 14;
-const WAVE_INTERVAL_MAX = 22;
-const TERRAIN_HALF = 17;
-
-// Wall tiers
-const WALL_TIERS = {
-  1: { name: 'Sac de sable', cost: 10, hp: 100, color: 0xd4b896, geoH: 0.55 },
-  2: { name: 'Renforcé', cost: 25, hp: 300, color: 0x8b7355, geoH: 0.7 },
-  3: { name: 'Béton', cost: 50, hp: 600, color: 0x888888, geoH: 0.9 },
-};
-const TRENCH_COST = 5;
-const TRENCH_DAMAGE = 8;  // per second when wave is over trench
-const TRENCH_HP = 40;     // trench HP — gets consumed as it damages waves
 
 let resources = 150;
 let score = 0;

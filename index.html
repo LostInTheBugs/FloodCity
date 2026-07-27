@@ -637,7 +637,7 @@ function generateCity() {
         const bz = road.z1 + dz * t + nz * setback * side;
 
         if (Math.abs(bx) > TERRAIN_HALF - 0.5 || Math.abs(bz) > TERRAIN_HALF - 0.5) continue;
-        if (bz < -TERRAIN_HALF + 2) continue; // don't build in ocean
+        if (bz < -11) continue; // keep beach clear
         if (tooClose(bx, bz, 2.5)) continue;
 
         const w = 0.8 + Math.random() * 1.2;
@@ -660,8 +660,9 @@ function generateCity() {
       attempts++;
     } while (attempts < 60 && (
       tooClose(x, z, 3) ||
-      distToRoad(x, z) < 1.5 ||  // not ON road
-      distToRoad(x, z) > 8       // not too far from road (stay near city)
+      distToRoad(x, z) < 1.5 ||
+      distToRoad(x, z) > 8 ||
+      z < -11  // keep beach clear
     ));
     if (attempts >= 60) continue;
     const w = 0.8 + Math.random() * 1.2;
@@ -703,6 +704,79 @@ function generateCity() {
     const building = createBuilding(x, z, w, d, h, color);
     buildings.push(building);
   }
+
+  // ─── Beach items: parasols, deckchairs, beachgoers ──────────
+  const beachZ = -13.5; // middle of beach area
+  for (let i = 0; i < 12; i++) {
+    const bx = -14 + Math.random() * 28;
+    const bz = beachZ + (Math.random() - 0.5) * 2.5;
+
+    // Parasol
+    const paraGroup = new THREE.Group();
+    const poleGeo = new THREE.CylinderGeometry(0.05, 0.06, 1.5, 6);
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0xddccaa, roughness: 0.6 });
+    const pole = new THREE.Mesh(poleGeo, poleMat);
+    pole.position.y = 0.75;
+    pole.castShadow = true;
+    paraGroup.add(pole);
+    const canopyGeo = new THREE.ConeGeometry(0.9, 0.3, 8);
+    const canopyColors = [0xff5533, 0xffaa00, 0x33aaff, 0xff3366, 0x33cc88, 0xffdd00];
+    const canopyMat = new THREE.MeshStandardMaterial({ color: canopyColors[Math.floor(Math.random() * canopyColors.length)], roughness: 0.5 });
+    const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+    canopy.position.y = 1.55;
+    canopy.castShadow = true;
+    paraGroup.add(canopy);
+    paraGroup.position.set(bx, 0.04, bz);
+    scene.add(paraGroup);
+
+    // Deckchair (transat)
+    const chairGroup = new THREE.Group();
+    const seatGeo = new THREE.BoxGeometry(0.7, 0.08, 1.4);
+    const seatMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+    const seat = new THREE.Mesh(seatGeo, seatMat);
+    seat.position.y = 0.15;
+    seat.receiveShadow = true;
+    chairGroup.add(seat);
+    // Stripes
+    for (let s = 0; s < 5; s++) {
+      const stripeGeo = new THREE.BoxGeometry(0.7, 0.005, 0.12);
+      const stripeColors = [0x2255cc, 0xcc2222, 0x22aa44];
+      const stripeMat = new THREE.MeshStandardMaterial({ color: stripeColors[s % 3] });
+      const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+      stripe.position.y = 0.2;
+      stripe.position.z = -0.5 + s * 0.25;
+      chairGroup.add(stripe);
+    }
+    chairGroup.position.set(bx + 0.8, 0.04, bz + 0.4);
+    chairGroup.rotation.y = Math.random() * Math.PI;
+    scene.add(chairGroup);
+
+    // Beachgoer (lying down)
+    const personGroup = new THREE.Group();
+    const bodyGeo = new THREE.CapsuleGeometry(0.1, 0.5, 4, 6);
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xffcc99, roughness: 0.5 });
+    const body = new THREE.Mesh(bodyGeo, skinMat);
+    body.position.y = 0.08;
+    body.rotation.z = Math.PI / 2;
+    body.castShadow = true;
+    personGroup.add(body);
+    const headGeo = new THREE.SphereGeometry(0.12, 6, 6);
+    const head = new THREE.Mesh(headGeo, skinMat);
+    head.position.set(0, 0.08, -0.35);
+    head.castShadow = true;
+    personGroup.add(head);
+    personGroup.position.set(bx + 0.9 + (Math.random() - 0.5) * 0.5, 0.04, bz + 0.5);
+    personGroup.rotation.y = Math.random() * Math.PI;
+    scene.add(personGroup);
+  }
+
+  // Beach ball
+  const ballGeo = new THREE.SphereGeometry(0.2, 8, 8);
+  const ballMat = new THREE.MeshStandardMaterial({ color: 0xff6644, roughness: 0.3 });
+  const ball = new THREE.Mesh(ballGeo, ballMat);
+  ball.position.set(3, 0.22, beachZ + 0.5);
+  ball.castShadow = true;
+  scene.add(ball);
 
   // Spawn cars on roads
   for (let ri = 0; ri < roadPaths.length; ri++) {

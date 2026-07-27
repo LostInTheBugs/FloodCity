@@ -998,10 +998,10 @@ function updateWaves(dt) {
         }
         if (hitAny) {
           const wallHpRatio = Math.max(0, wall.hp / wall.maxHp);
+          const base = new THREE.Color(WALL_TIERS[wall.tier]?.color || 0xd4b896);
+          const damaged = base.clone().multiplyScalar(0.3 + wallHpRatio * 0.7);
           wall.group.children.forEach(c => {
-            if (c.material && c.material.color) {
-              c.material.color.setHex(wallHpRatio > 0.5 ? 0xd4b896 : wallHpRatio > 0.25 ? 0xb8954a : 0x8a5a2a);
-            }
+            if (c.material && c.material.color) c.material.color.copy(damaged);
           });
           wall.group.scale.y = Math.max(0.3, wallHpRatio);
           if (wall.hp <= 0) {
@@ -1151,10 +1151,78 @@ function flashMessage(text, duration = 2000) {
   $message._timeout = setTimeout(() => $message.classList.remove('show'), duration);
 }
 
-// ─── Raycaster for click placement ──────────────────────────
+// ─── Raycaster & ghost preview ──────────────────────────────
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+// Ghost mesh for placement preview
+const ghostMat = new THREE.MeshStandardMaterial({ color: 0x44ff44, roughness: 0.5, transparent: true, opacity: 0.45, depthWrite: false });
+const ghostGroup = new THREE.Group();
+ghostGroup.visible = false;
+scene.add(ghostGroup);
+
+function isValidPlacement(x, z) {
+  if (Math.abs(x) > TERRAIN_HALF || Math.abs(z) > TERRAIN_HALF) return false;
+  if (z < -11) return false;
+  // Check overlap with buildings
+  for (const b of buildings) {
+    if (!b.alive) continue;
+    if (Math.abs(b.x - x) < b.w / 2 + 0.7 && Math.abs(b.z - z) < b.d / 2 + 0.7) return false;
+  }
+  // Check overlap with existing walls
+  for (const w of walls) {
+    if (Math.abs(w.x - x) < 0.8 && Math.abs(w.z - z) < 0.8) return false;
+  }
+  // Check overlap with existing trenches
+  for (const t of trenches) {
+    if (Math.abs(t.x - x) < 0.8 && Math.abs(t.z - z) < 0.8) return false;
+  }
+  const cost = trenchMode ? TRENCH_COST : WALL_TIERS[currentTier].cost;
+  return resources >= cost;
+}
+
+function updateGhost(snapped) {
+  ghostGroup.clear();
+  const valid = isValidPlacement(snapped.x, snapped.z);
+  ghostMat.color.set(valid ? 0x44ff44 : 0xff4444);
+  ghostMat.opacity = valid ? 0.45 : 0.35;
+
+  if (trenchMode) {
+    const geo = new THREE.BoxGeometry(1.0, 0.15, 0.9);
+    const m = new THREE.Mesh(geo, ghostMat);
+    m.position.y = -0.06;
+    ghostGroup.add(m);
+  } else {
+    const tier = WALL_TIERS[currentTier];
+    const geo = new THREE.BoxGeometry(1.1, tier.geoH, 0.45);
+    const m1 = new THREE.Mesh(geo, ghostMat);
+    m1.position.y = tier.geoH / 2;
+    ghostGroup.add(m1);
+    const topGeo = new THREE.BoxGeometry(1.0, tier.geoH * 0.7, 0.4);
+    const m2 = new THREE.Mesh(topGeo, ghostMat);
+    m2.position.y = tier.geoH + tier.geoH * 0.35;
+    ghostGroup.add(m2);
+  }
+  ghostGroup.position.set(snapped.x, 0, snapped.z);
+  ghostGroup.visible = true;
+}
+
+renderer.domElement.addEventListener('mousemove', (e) => {
+  if (gameOver) { ghostGroup.visible = false; return; }
+  mouse.x = (e.clientX / innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const intersection = new THREE.Vector3();
+  if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
+    updateGhost(new THREE.Vector3(
+      Math.round(intersection.x * 2) / 2, 0,
+      Math.round(intersection.z * 2) / 2
+    ));
+  } else {
+    ghostGroup.visible = false;
+  }
+});
 
 renderer.domElement.addEventListener('click', (e) => {
   if (gameOver) return;
@@ -1169,6 +1237,7 @@ renderer.domElement.addEventListener('click', (e) => {
       Math.round(intersection.z * 2) / 2
     );
     if (trenchMode) placeTrench(snapped); else placeWall(snapped);
+    updateGhost(snapped); // refresh ghost color
   }
 });
 

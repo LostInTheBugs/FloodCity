@@ -251,6 +251,7 @@ let trenchMode = false;     // T toggles
 let alertTriggered = false; // early warning flag
 let cars = [];
 let roadPaths = [];
+let pedestrians = [];
 
 // Building palette — warmer, more varied
 const BUILDING_COLORS = [
@@ -448,6 +449,114 @@ function createCar(roadIdx) {
   });
 }
 
+// ─── Sidewalks ───────────────────────────────────────────────
+function createSidewalks(road) {
+  const dx = road.x2 - road.x1, dz = road.z2 - road.z1;
+  const len = Math.sqrt(dx * dx + dz * dz);
+  const angle = Math.atan2(dx, dz);
+  const offsetX = Math.cos(angle) * 1.1;
+  const offsetZ = -Math.sin(angle) * 1.1;
+  const mat = new THREE.MeshStandardMaterial({ color: 0xb0b0b8, roughness: 0.9 });
+  [-1, 1].forEach(side => {
+    const geo = new THREE.PlaneGeometry(0.55, len);
+    const sw = new THREE.Mesh(geo, mat);
+    sw.rotation.x = -Math.PI / 2;
+    sw.rotation.z = angle;
+    sw.position.set(
+      (road.x1 + road.x2) / 2 + offsetX * side,
+      0.025,
+      (road.z1 + road.z2) / 2 + offsetZ * side
+    );
+    sw.receiveShadow = true;
+    scene.add(sw);
+  });
+}
+
+// ─── Crosswalk ───────────────────────────────────────────────
+function createCrosswalk(x, z, angle) {
+  const count = 5;
+  const stripeW = 0.18, stripeL = 2.2;
+  const mat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.6 });
+  for (let i = 0; i < count; i++) {
+    const geo = new THREE.PlaneGeometry(stripeW, stripeL);
+    const stripe = new THREE.Mesh(geo, mat);
+    stripe.rotation.x = -Math.PI / 2;
+    stripe.rotation.z = angle;
+    stripe.position.set(
+      x + (i - (count - 1) / 2) * stripeW * 1.5 * Math.cos(angle),
+      0.028,
+      z - (i - (count - 1) / 2) * stripeW * 1.5 * Math.sin(angle)
+    );
+    stripe.receiveShadow = true;
+    scene.add(stripe);
+  }
+}
+
+// ─── Traffic light ───────────────────────────────────────────
+function createTrafficLight(x, z) {
+  const group = new THREE.Group();
+  // Pole
+  const poleGeo = new THREE.CylinderGeometry(0.06, 0.08, 2.2, 6);
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.4, metalness: 0.6 });
+  const pole = new THREE.Mesh(poleGeo, poleMat);
+  pole.position.y = 1.1;
+  pole.castShadow = true;
+  group.add(pole);
+  // Signal box
+  const boxGeo = new THREE.BoxGeometry(0.22, 0.55, 0.22);
+  const boxMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3 });
+  const box = new THREE.Mesh(boxGeo, boxMat);
+  box.position.y = 2.35;
+  group.add(box);
+  // Lights
+  const colors = [0xff2222, 0xffaa00, 0x22cc22];
+  colors.forEach((c, i) => {
+    const geo = new THREE.SphereGeometry(0.07, 6, 6);
+    const mat = new THREE.MeshBasicMaterial({ color: c });
+    const light = new THREE.Mesh(geo, mat);
+    light.position.y = 2.35 + (1 - i) * 0.18;
+    light.position.z = 0.13;
+    group.add(light);
+  });
+  group.position.set(x, 0, z);
+  scene.add(group);
+}
+
+// ─── Pedestrian ──────────────────────────────────────────────
+function createPedestrian(roadIdx, side) {
+  const road = roadPaths[roadIdx];
+  const group = new THREE.Group();
+  // Body
+  const bodyGeo = new THREE.CapsuleGeometry(0.09, 0.35, 4, 6);
+  const clothes = [0x3344aa, 0xcc3333, 0x33aa44, 0xdd8800, 0x7733aa, 0x555555, 0xee6699];
+  const bodyMat = new THREE.MeshStandardMaterial({ color: clothes[Math.floor(Math.random() * clothes.length)], roughness: 0.7 });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 0.4;
+  body.castShadow = true;
+  group.add(body);
+  // Head
+  const headGeo = new THREE.SphereGeometry(0.1, 6, 6);
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xffd9b3, roughness: 0.6 });
+  const head = new THREE.Mesh(headGeo, headMat);
+  head.position.y = 0.78;
+  head.castShadow = true;
+  group.add(head);
+
+  const t0 = Math.random();
+  const dx = road.x2 - road.x1, dz = road.z2 - road.z1;
+  const len = Math.sqrt(dx*dx + dz*dz);
+  const angle = Math.atan2(dx, dz);
+  // Sidewalk offset
+  const offX = Math.cos(angle) * 1.1 * side;
+  const offZ = -Math.sin(angle) * 1.1 * side;
+  const x = road.x1 + dx * t0 + offX;
+  const z = road.z1 + dz * t0 + offZ;
+  group.position.set(x, 0.03, z);
+  group.rotation.y = angle;
+  scene.add(group);
+  return { group, roadIdx, side, t: t0, speed: 0.3 + Math.random() * 0.5, direction: Math.random() > 0.5 ? 1 : -1 };
+}
+
 function generateCity() {
   // Clear cars
   cars.forEach(c => {
@@ -456,6 +565,12 @@ function generateCity() {
   });
   cars = [];
   roadPaths = [];
+  // Clear pedestrians
+  pedestrians.forEach(p => {
+    p.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
+    scene.remove(p.group);
+  });
+  pedestrians = [];
 
   // Clear existing
   buildings.forEach(b => {
@@ -555,6 +670,26 @@ function generateCity() {
   for (let ri = 0; ri < roadPaths.length; ri++) {
     const count = 1 + Math.floor(Math.random() * 2);
     for (let ci = 0; ci < count; ci++) createCar(ri);
+  }
+
+  // Sidewalks, crosswalks, traffic lights
+  roadPaths.forEach(r => createSidewalks(r));
+  const intersections = [[-8,-11], [3,-11], [-8,-4], [3,-4], [-8,5], [3,5]];
+  intersections.forEach(([ix, iz]) => {
+    createCrosswalk(ix + 0.8, iz, 0);             // horizontal crosswalk
+    createCrosswalk(ix, iz + 0.8, Math.PI / 2);   // vertical crosswalk
+    createTrafficLight(ix + 1.4, iz - 1.4);       // corner
+  });
+
+  // Spawn pedestrians on sidewalks
+  pedestrians = [];
+  for (let ri = 0; ri < roadPaths.length; ri++) {
+    for (let s = 0; s < 2; s++) {
+      const count = 1 + Math.floor(Math.random() * 3); // 1-3 peds per sidewalk
+      for (let pi = 0; pi < count; pi++) {
+        pedestrians.push(createPedestrian(ri, s === 0 ? -1 : 1));
+      }
+    }
   }
 
   updateHUD();
@@ -932,10 +1067,8 @@ function gameLoop() {
       const road = roadPaths[car.roadIdx];
       const len = Math.hypot(road.x2 - road.x1, road.z2 - road.z1);
       car.t += (car.speed / len) * car.direction * dt;
-      // Wrap around
       if (car.t > 1) car.t -= 1;
       if (car.t < 0) car.t += 1;
-      // Position
       const x = road.x1 + (road.x2 - road.x1) * car.t;
       const z = road.z1 + (road.z2 - road.z1) * car.t;
       car.group.position.x = x;
@@ -943,6 +1076,22 @@ function gameLoop() {
       car.group.rotation.y = car.direction > 0
         ? Math.atan2(road.x2 - road.x1, road.z2 - road.z1)
         : Math.atan2(road.x1 - road.x2, road.z1 - road.z2);
+    }
+
+    // Update pedestrians
+    for (const ped of pedestrians) {
+      const road = roadPaths[ped.roadIdx];
+      const dx = road.x2 - road.x1, dz = road.z2 - road.z1;
+      const len = Math.hypot(dx, dz);
+      const angle = Math.atan2(dx, dz);
+      ped.t += (ped.speed / len) * ped.direction * dt;
+      if (ped.t > 1) ped.t -= 1;
+      if (ped.t < 0) ped.t += 1;
+      const offX = Math.cos(angle) * 1.1 * ped.side;
+      const offZ = -Math.sin(angle) * 1.1 * ped.side;
+      ped.group.position.x = road.x1 + dx * ped.t + offX;
+      ped.group.position.z = road.z1 + dz * ped.t + offZ;
+      ped.group.rotation.y = ped.direction > 0 ? angle : angle + Math.PI;
     }
 
     // Check game over
@@ -992,6 +1141,12 @@ window.restartGame = function() {
   });
   cars = [];
   roadPaths = [];
+  // Clean pedestrians
+  pedestrians.forEach(p => {
+    p.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
+    scene.remove(p.group);
+  });
+  pedestrians = [];
 
   // Reset state
   resources = 150;

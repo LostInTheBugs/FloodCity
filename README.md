@@ -79,6 +79,13 @@ Le projet inclut un harnais de test automatisé dans `visual-harness/`. Il lance
 
 ## 📋 Notes de version
 
+### 2026.07.012
+- Les habitants menacés se réfugient réellement dans les immeubles et en ressortent progressivement une fois le danger passé ; ceux dont l'immeuble est détruit ne reviennent pas
+- Un parking en front de mer fait son apparition, sur lequel on peut construire
+- Les vagues emportent désormais tout ce qui est posé : lampadaires et leurs halos, feux tricolores, parasols, transats, ballons — une zone dévastée s'éteint la nuit
+- Les baigneurs allongés se lèvent et fuient à l'alerte, puis reviennent se rallonger une fois le danger passé
+- Les revêtements — chaussée, trottoirs, marquages, parking — restent en place après le passage d'une vague
+
 ### 2026.07.011
 - L'éclairage nocturne des lampadaires est adouci : les halos ne saturent plus la chaussée en blanc et l'ambiance bleutée de la nuit redevient dominante, pour une atmosphère plus naturelle
 - Amélioration de la lisibilité du décor en mode nuit
@@ -93,11 +100,9 @@ Le projet inclut un harnais de test automatisé dans `visual-harness/`. Il lance
 - Amélioration de la stabilité d'affichage des éléments au sol en conditions de faible luminosité
 
 ### 2026.07.008
-- Les habitants se réfugient désormais dans les immeubles à l'approche d'une vague et en ressortent une fois le danger passé — ceux dont l'immeuble est détruit ne reviennent pas
-- Seuls les habitants réellement menacés par une vague paniquent et courent se mettre à l'abri ; le reste de la ville continue sa vie normalement
 - L'intervalle entre les vagues est allongé, laissant davantage de temps pour reconstruire et observer la ville respirer entre deux alertes
 - Un mode jour/nuit activable avec la touche N : nuit claire de lune avec fenêtres allumées, lampadaires, phares et feux de camp sur la plage
-- Le mobilier urbain s'enrichit : parking en front de mer, lampadaires le long des rues et feux tricolores de part et d'autre des carrefours
+- Le mobilier urbain s'enrichit : lampadaires le long des rues et feux tricolores de part et d'autre des carrefours
 - Le réseau de rues est réorganisé en îlots plus grands, rendant les déplacements plus fluides et la ville plus lisible
 - La forme des vagues est retravaillée — moins anguleuse, plus organique
 

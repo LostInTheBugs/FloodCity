@@ -388,7 +388,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ─── Version ──────────────────────────────────────────────────
-const GAME_VERSION = "2026.07.011";
+const GAME_VERSION = "2026.07.012";
 document.querySelector("meta[name=version]").setAttribute("content", GAME_VERSION);
 document.getElementById('home-version').textContent = 'v' + GAME_VERSION;
 document.getElementById('hud-version').textContent = 'v' + GAME_VERSION;
@@ -407,6 +407,7 @@ const Y_CROSSWALK = 0.13;   // pedestrian crossing stripes
 const Y_GRID      = 0.18;   // development grid decal
 const Y_FIRE_HALO = 0.22;   // campfire ground glow (additive decal)
 const Y_LAMP_HALO = 0.26;   // streetlamp ground puddle (additive decal)
+const Y_PARKING  = 0.03;   // parking lot asphalt (above ground, below road)
 const Y_BELOW_ALL = -0.10;  // far‑ocean background plane (always behind terrain)
 
 // ─── Version update checker ──────────────────────────────────
@@ -747,7 +748,7 @@ let roadPaths = [];
 let pedestrians = [];
 let nextWaveDir = 'south';
 let intersections = [];
-let beachPeople = []; // { group, type: 'swimmer'|'walker'|'ballplayer', ... }
+let beachPeople = []; // { group, type: 'swimmer'|'walker'|'ballplayer'|'sunbather', ... }
 let ballGroup = null; // beach ball mesh (the one that gets played with)
 let oceanPlanes = []; // animated ocean meshes
 let oceanMaterials = []; // tracked for night emissive
@@ -755,13 +756,15 @@ let waveFoamMaterials = []; // wave crest foam for night emissive
 let beachVendors = []; // { group, cartGroup, x, z, ... }
 let alertPanicTime = 0;   // performance.now() when alert was triggered
 let lastWaveClearTime = 0; // time when all waves left the map
+let shelteredEntities = []; // { building, entityRef, entityType, exitDelay, exitStagger }
+let parkedCars = [];        // { group, x, z } — static parked cars that can be swept
 
 // ─── Night mode state ──────────────────────────────────────
 let isNight = false;
 let nightBlend = 0;   // 0=day, 1=night (lerped)
 let nightTarget = 0;
 let streetLamps = [];  // { group, lampEmissive, haloPlane, x, z }
-let waterfrontDecor = []; // { group, x, z, alive } — traversable waterfront scenery
+let sceneryDecor = []; // { group, x, z, alive } — decor swept by waves (promenade + street)
 let nightBuildingData = []; // per-building: { emissiveMap, bodyMat, emissiveIntensity }
 
 const BUILDING_COLORS = [
@@ -1101,6 +1104,7 @@ function createTrafficLight(x, z) {
   group.position.set(x, 0, z);
   group.scale.setScalar(0.43 * LEGIBILITY_FACTOR); // 3.2m traffic light at 6.4m/unit → ~0.85u with legibility
   cityGroup.add(group);
+  sceneryDecor.push({ group, x, z, alive: true, _type: 'trafficLight', _posY: 0.45, _headY: 1.05 });
 }
 
 // ─── Pedestrian ──────────────────────────────────────────────
@@ -1185,7 +1189,7 @@ function createWaterfrontDecor(map) {
       cityGroup.add(plank);
       const entry = { group: plank, x: plank.position.x, z: plank.position.z, alive: true,
         _type: 'plank', _posY: plank.position.y };
-      waterfrontDecor.push(entry);
+      sceneryDecor.push(entry);
     }
   }
   // Cross-ties every few metres
@@ -1195,7 +1199,7 @@ function createWaterfrontDecor(map) {
     tie.position.set(cx, 0.02 / 2, zPromenade);
     tie.receiveShadow = true;
     cityGroup.add(tie);
-    waterfrontDecor.push({ group: tie, x: tie.position.x, z: tie.position.z, alive: true,
+    sceneryDecor.push({ group: tie, x: tie.position.x, z: tie.position.z, alive: true,
       _type: 'tie', _posY: tie.position.y });
   }
 
@@ -1207,7 +1211,7 @@ function createWaterfrontDecor(map) {
     post.position.set(rx, 0.55 / 2, zFence);
     post.castShadow = true;
     cityGroup.add(post);
-    waterfrontDecor.push({ group: post, x: rx, z: zFence, alive: true,
+    sceneryDecor.push({ group: post, x: rx, z: zFence, alive: true,
       _type: 'railPost', _posY: post.position.y });
   }
   // Horizontal rail bars (segments of ~3 units)
@@ -1218,7 +1222,7 @@ function createWaterfrontDecor(map) {
       rail.position.set(rb + 1.5, ry, zFence);
       rail.castShadow = true;
       cityGroup.add(rail);
-      waterfrontDecor.push({ group: rail, x: rail.position.x, z: zFence, alive: true,
+      sceneryDecor.push({ group: rail, x: rail.position.x, z: zFence, alive: true,
         _type: 'railBar', _posY: rail.position.y });
     }
   }
@@ -1259,7 +1263,7 @@ function createWaterfrontDecor(map) {
     }
     palmGrp.position.set(px, 0, pz);
     cityGroup.add(palmGrp);
-    waterfrontDecor.push({ group: palmGrp, x: px, z: pz, alive: true,
+    sceneryDecor.push({ group: palmGrp, x: px, z: pz, alive: true,
       _type: 'palm', _posY: 0 });
   }
 
@@ -1297,7 +1301,7 @@ function createWaterfrontDecor(map) {
     benchGrp.position.set(bx, 0, zBenchRow);
     benchGrp.rotation.y = 0; // face south
     cityGroup.add(benchGrp);
-    waterfrontDecor.push({ group: benchGrp, x: bx, z: zBenchRow, alive: true,
+    sceneryDecor.push({ group: benchGrp, x: bx, z: zBenchRow, alive: true,
       _type: 'bench', _posY: 0 });
   }
 
@@ -1362,7 +1366,7 @@ function createWaterfrontDecor(map) {
 
   kioskGrp.position.set(kioskX, 0, kioskZ);
   cityGroup.add(kioskGrp);
-  waterfrontDecor.push({ group: kioskGrp, x: kioskX, z: kioskZ, alive: true,
+  sceneryDecor.push({ group: kioskGrp, x: kioskX, z: kioskZ, alive: true,
     _type: 'kiosk', _posY: 0 });
 
   // ── Promenade lamps (shorter than street lamps, warm glow) ──
@@ -1399,7 +1403,7 @@ function createWaterfrontDecor(map) {
     // Also add to streetLamps for night lighting
     streetLamps.push({ group: lampGrp, lampEmissive: housing, haloPlane: null, x: lx, z: zLampRow });
 
-    waterfrontDecor.push({ group: lampGrp, x: lx, z: zLampRow, alive: true,
+    sceneryDecor.push({ group: lampGrp, x: lx, z: zLampRow, alive: true,
       _type: 'promLamp', _posY: 0, _lampHousing: housing });
   }
 }
@@ -1443,6 +1447,7 @@ function createBeachItems(map) {
     paraGroup.scale.setScalar(LEGIBILITY_FACTOR);
     paraGroup.position.set(bx, 0.04, bz);
     cityGroup.add(paraGroup);
+    sceneryDecor.push({ group: paraGroup, x: bx, z: bz, alive: true, _type: 'umbrella', _posY: 0.04 });
 
     // ── Transat: 0.28 long × 0.13 wide ──
     const chairGroup = new THREE.Group();
@@ -1465,25 +1470,7 @@ function createBeachItems(map) {
     chairGroup.position.set(bx + 0.12, 0.04, bz + 0.10);
     chairGroup.rotation.y = Math.random() * Math.PI;
     cityGroup.add(chairGroup);
-
-    // ── Bather lying on transat: total body length ~0.27 ──
-    const personGroup = new THREE.Group();
-    const batherBodyGeo = new THREE.CapsuleGeometry(0.025, 0.22, 4, 6);
-    const batherBody = new THREE.Mesh(batherBodyGeo, skinMat);
-    batherBody.position.y = 0.06;
-    batherBody.rotation.z = Math.PI / 2; // lay flat
-    batherBody.castShadow = true;
-    personGroup.add(batherBody);
-    const batherHeadGeo = new THREE.SphereGeometry(0.035, 6, 6);
-    const batherHead = new THREE.Mesh(batherHeadGeo, skinMat);
-    batherHead.position.set(0, 0.06, -0.13); // head at one end of body
-    batherHead.castShadow = true;
-    personGroup.add(batherHead);
-    personGroup.scale.setScalar(LEGIBILITY_FACTOR);
-    // Position on/near transat
-    personGroup.position.set(bx + 0.14 + (Math.random() - 0.5) * 0.08, 0.06, bz + 0.12);
-    personGroup.rotation.y = Math.random() * Math.PI;
-    cityGroup.add(personGroup);
+    sceneryDecor.push({ group: chairGroup, x: bx + 0.12, z: bz + 0.10, alive: true, _type: 'transat', _posY: 0.04 });
   }
 
   // Beach ball
@@ -1494,6 +1481,7 @@ function createBeachItems(map) {
   ball.castShadow = true;
   ball.scale.setScalar(LEGIBILITY_FACTOR);
   cityGroup.add(ball);
+  sceneryDecor.push({ group: ball, x: ball.position.x, z: ball.position.z, alive: true, _type: 'beachBall', _posY: 0.06 });
 
   // Extra scattered balls
   for (let i = 0; i < 4; i++) {
@@ -1505,6 +1493,7 @@ function createBeachItems(map) {
     extraBall.castShadow = true;
     extraBall.scale.setScalar(LEGIBILITY_FACTOR);
     cityGroup.add(extraBall);
+    sceneryDecor.push({ group: extraBall, x: ebx, z: ebz, alive: true, _type: 'beachBall', _posY: 0.04 });
   }
 }
 
@@ -1777,6 +1766,39 @@ function createBeachWalker(x, z, color) {
   };
 }
 
+// Sunbather — lying on transat, flees when alert triggered
+function createSunbather(x, z, homeX, homeZ) {
+  const group = new THREE.Group();
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xffcc99, roughness: 0.5 });
+  const bodyGeo = new THREE.CapsuleGeometry(0.025, 0.22, 4, 6);
+  const body = new THREE.Mesh(bodyGeo, skinMat);
+  body.position.y = 0.06;
+  body.rotation.z = Math.PI / 2; // lay flat
+  body.castShadow = true;
+  group.add(body);
+  const headGeo = new THREE.SphereGeometry(0.035, 6, 6);
+  const head = new THREE.Mesh(headGeo, skinMat);
+  head.position.set(0, 0.06, -0.13);
+  head.castShadow = true;
+  group.add(head);
+  group.userData = { bodyMesh: body, headMesh: head };
+
+  group.scale.setScalar(LEGIBILITY_FACTOR);
+  group.position.set(x, 0.06, z);
+  group.rotation.y = Math.random() * Math.PI;
+  cityGroup.add(group);
+
+  return {
+    group, x, z, type: 'sunbather',
+    alive: true, fleeing: false, returning: false,
+    returnDelay: 0, returnSpeed: 0,
+    homeX, homeZ,
+    fleeSpeed: 0, fleeDir: 0,
+    panicDelay: 0.15 + Math.random() * 0.3,
+    isLying: true,
+  };
+}
+
 // Ball player — plays with the beach ball, kicks it around
 function createBallPlayer(ballMesh, x, z) {
   const group = new THREE.Group();
@@ -1865,13 +1887,15 @@ function generateMap(map) {
   roadPaths = [];
   pedestrians = [];
   beachVendors = [];
-  waterfrontDecor = [];
+  sceneryDecor = [];
   beachPeople = [];
   ballGroup = null;
   buildings = [];
   walls = [];
   trenches = [];
   waves = [];
+  shelteredEntities = [];
+  parkedCars = [];
   particlePool.forEach(p => { scene.remove(p.mesh); p.mesh.geometry?.dispose(); p.mesh.material?.dispose(); });
   particlePool = [];
   ghostGroup.visible = false;
@@ -2157,6 +2181,9 @@ function generateMap(map) {
   // Waterfront promenade (littoral only — fills the defense zone between beach and city)
   if (!map.islandRadius) createWaterfrontDecor(map);
 
+  // Parking lot (littoral only — between promenade and city)
+  if (!map.islandRadius) createParkingLot(map);
+
   // Beach vendors — placed on sand, peripheral for island, along littoral beach
   beachVendors = [];
   const vendorCount = 2 + Math.floor(Math.random() * 2); // 2–3
@@ -2250,6 +2277,17 @@ function generateMap(map) {
     cityGroup.add(playerBall);
     beachPeople.push(createBallPlayer(playerBall, bx + 0.5, bz));
     ballGroup = playerBall;
+  }
+
+  // ── Sunbathers on the beach ──────────────────────────────
+  if (!map.islandRadius) {
+    const beachZ = map.beachZ;
+    const spreadZ = map.beachDepth - 1;
+    for (let i = 0; i < 20; i++) {
+      const sx = -14 + Math.random() * 28;
+      const sz = beachZ + (Math.random() - 0.5) * spreadZ;
+      beachPeople.push(createSunbather(sx + 0.14, sz + 0.12, sx + 0.14, sz + 0.12));
+    }
   }
 
   // Cars
@@ -2711,6 +2749,16 @@ function updateWaves(dt) {
             seg.hp -= building.h * 8;
             if (seg.hp <= 0) seg.alive = false;
             building.alive = false;
+            // Kill all entities sheltered in this building
+            for (let si = shelteredEntities.length - 1; si >= 0; si--) {
+              if (shelteredEntities[si].building === building) {
+                const se = shelteredEntities[si];
+                se.entityRef.alive = false;
+                se.entityRef.group.removeFromParent();
+                se.entityRef.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+                shelteredEntities.splice(si, 1);
+              }
+            }
             building.group.removeFromParent();
             building.group.traverse(c => {
               if (c.geometry) c.geometry.dispose();
@@ -2790,6 +2838,134 @@ function isInPanicZone(entityZ, entityX) {
   // No matching wave yet (alert phase): lateral check is permissive
 
   return true;
+}
+
+// ─── Shelter logic ────────────────────────────────────────────
+// Find the nearest alive building that is reachable and safer
+// (further inland than the entity's current position for south waves,
+//  further south for north waves).
+function findNearestSafeBuilding(ex, ez) {
+  let best = null, bestDist = Infinity;
+  const dirSign = nextWaveDir === 'north' ? -1 : 1;
+  for (const b of buildings) {
+    if (!b.alive) continue;
+    // Building must be at least 1 unit further inland than the entity
+    const bInland = dirSign > 0 ? b.z : -b.z; // south wave: higher z = inland
+    const eInland = dirSign > 0 ? ez : -ez;
+    if (bInland < eInland + 0.5) continue;
+    const dist = Math.hypot(b.x - ex, b.z - ez);
+    if (dist < bestDist) { bestDist = dist; best = b; }
+  }
+  return best;
+}
+
+// Move an entity into a building for shelter.
+// The entity's group is hidden (not disposed) and tracked in shelteredEntities.
+function shelterEntity(building, entityRef, entityType) {
+  entityRef.group.visible = false;
+  // Staggered exit: each entity gets its own random delay within a window
+  const exitStagger = 1.5 + Math.random() * 4.0; // 1.5–5.5 seconds staggered
+  shelteredEntities.push({
+    building,
+    entityRef,
+    entityType,
+    exitDelay: exitStagger,
+    exitStagger,
+  });
+}
+
+// ─── Parked car (static, no driving logic) ───────────────────
+function createParkedCar(x, z, rotation) {
+  const group = new THREE.Group();
+  const bodyGeo = new THREE.BoxGeometry(0.35, 0.22, 0.7);
+  const colors = [0xe83333, 0x2266cc, 0xf5a623, 0x33aa55, 0xdddddd, 0x111133, 0xff8800, 0x8833cc];
+  const carColor = colors[Math.floor(Math.random() * colors.length)];
+  const bodyMat = new THREE.MeshStandardMaterial({ color: carColor, roughness: 0.3, metalness: 0.5 });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 0.22;
+  body.castShadow = true;
+  group.add(body);
+  const cabinGeo = new THREE.BoxGeometry(0.3, 0.18, 0.35);
+  const cabinMat = new THREE.MeshStandardMaterial({ color: 0x88bbdd, roughness: 0.2, metalness: 0.3, transparent: true, opacity: 0.7 });
+  const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+  cabin.position.set(0, 0.38, -0.05);
+  cabin.castShadow = true;
+  group.add(cabin);
+  const wheelGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.06, 6);
+  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+  [[-0.2, 0.08, 0.22], [0.2, 0.08, 0.22], [-0.2, 0.08, -0.22], [0.2, 0.08, -0.22]].forEach(([wx, wy, wz]) => {
+    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(wx, wy, wz);
+    wheel.castShadow = true;
+    group.add(wheel);
+  });
+  group.position.set(x, Y_PARKING, z);
+  group.rotation.y = rotation;
+  cityGroup.add(group);
+  parkedCars.push({ group, x, z });
+}
+
+// ─── Parking lot (littoral only) ─────────────────────────────
+// Paved strip between city and the waterfront promenade.
+// Traversable — walls and trenches can be placed right over it.
+function createParkingLot(map) {
+  const zParkingCenter = -5.3;
+  const ASPHALT = new THREE.MeshStandardMaterial({ color: 0x3a3a42, roughness: 0.92 });
+
+  // Two parking areas — east and west of the kiosk
+  const lots = [
+    { cx: -7.5, cw: 5.0 },
+    { cx: 7.5, cw: 5.0 },
+  ];
+
+  lots.forEach(lot => {
+    // Asphalt slab
+    const slabGeo = new THREE.PlaneGeometry(lot.cw + 0.6, 3.0);
+    const slab = new THREE.Mesh(slabGeo, ASPHALT);
+    slab.rotation.x = -Math.PI / 2;
+    slab.position.set(lot.cx, Y_PARKING, zParkingCenter);
+    slab.receiveShadow = true;
+    cityGroup.add(slab);
+
+    // Parking space markings (white lines)
+    const spaceW = 0.45, spaceD = 0.85;
+    const aisleW = 0.7;
+    const spacesPerRow = Math.floor((lot.cw - 0.4) / spaceW);
+    const rowNorth = zParkingCenter + aisleW / 2 + spaceD / 2;
+    const rowSouth = zParkingCenter - aisleW / 2 - spaceD / 2;
+
+    for (let si = 0; si < spacesPerRow; si++) {
+      const sx = lot.cx - lot.cw / 2 + 0.4 + si * spaceW + spaceW / 2;
+      // North row (cars face south)
+      const lineGeoN = new THREE.PlaneGeometry(0.04, spaceD);
+      const lineN = new THREE.Mesh(lineGeoN, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthWrite: false }));
+      lineN.rotation.x = -Math.PI / 2;
+      lineN.position.set(sx - spaceW / 2, Y_PARKING + 0.001, rowNorth);
+      cityGroup.add(lineN);
+      // South row (cars face north)
+      const lineGeoS = new THREE.PlaneGeometry(0.04, spaceD);
+      const lineS = new THREE.Mesh(lineGeoS, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthWrite: false }));
+      lineS.rotation.x = -Math.PI / 2;
+      lineS.position.set(sx - spaceW / 2, Y_PARKING + 0.001, rowSouth);
+      cityGroup.add(lineS);
+
+      // Parked cars — ~60% occupancy
+      if (Math.random() < 0.6) {
+        const rowZ = Math.random() > 0.5 ? rowNorth : rowSouth;
+        const rot = rowZ > zParkingCenter ? 0 : Math.PI; // face away from aisle
+        createParkedCar(sx + (Math.random() - 0.5) * 0.1, rowZ, rot + (Math.random() - 0.5) * 0.15);
+      }
+    }
+  });
+
+  // Connector: short driveway linking parking aisle to the z=-4 road
+  const driveGeo = new THREE.PlaneGeometry(1.0, 1.3);
+  const drive = new THREE.Mesh(driveGeo, ASPHALT);
+  drive.rotation.x = -Math.PI / 2;
+  drive.position.set(0, Y_PARKING, -4.65);
+  drive.receiveShadow = true;
+  cityGroup.add(drive);
 }
 
 // ─── Water animation ────────────────────────────────────────
@@ -3098,6 +3274,8 @@ function createStreetLamp(x, z) {
   cityGroup.add(group);
 
   streetLamps.push({ group, lampEmissive: housing, haloPlane: halo, x, z });
+  sceneryDecor.push({ group, x, z, alive: true,
+    _type: 'streetLamp', _posY: 0.8, _headY: 1.9 });
   return group;
 }
 
@@ -3401,9 +3579,16 @@ function gameLoop() {
 
       if (alertTriggered && panicElapsed > (ped.panicDelay || 0) && !ped.fleeing && pedInPanic) {
         ped.fleeing = true;
-        ped.baseFleeSpeed = ped.speed * (2.0 + Math.random() * 1.5);
-        // Flee inland: south wave → +z (north), north wave → -z (south)
-        ped.fleeDir = nextWaveDir === 'north' ? -1 : 1;
+        // Find nearest safe building and run toward it
+        const target = findNearestSafeBuilding(ped.group.position.x, ped.group.position.z);
+        if (target) {
+          ped.shelterTarget = target;
+          ped.baseFleeSpeed = ped.speed * (2.5 + Math.random() * 2.0);
+        } else {
+          // No building available: fallback to simple inland flight
+          ped.fleeDir = nextWaveDir === 'north' ? -1 : 1;
+          ped.baseFleeSpeed = ped.speed * (2.0 + Math.random() * 1.5);
+        }
       }
 
       // Return to sidewalk: staggered walk back toward home position
@@ -3428,29 +3613,47 @@ function gameLoop() {
       }
 
       if (ped.fleeing) {
-        // Free walk inland
-        let fleeSpeed = ped.baseFleeSpeed || ped.speed * 2.5;
-        // Start return to home after calm, staggered
-        if (calmElapsed > 0 && ped.returnDelay === 0) {
-          ped.returnDelay = 0.5 + Math.random() * 3.5; // stagger 0.5–4 s
-        }
-        if (calmElapsed > ped.returnDelay && ped.returnDelay > 0) {
-          const calmFactor = Math.min(1, (calmElapsed - ped.returnDelay) / 1.5);
-          fleeSpeed = ped.speed + (fleeSpeed - ped.speed) * (1 - calmFactor);
-          if (calmFactor >= 1) {
-            ped.fleeing = false;
-            ped.baseFleeSpeed = 0;
-            // Start walking back home
-            ped.returning = true;
-            ped.returnSpeed = ped.speed * 0.7; // leisurely walk back
-            ped.group.position.y = 0.03;
+        if (ped.shelterTarget) {
+          // Run toward safe building
+          const dx = ped.shelterTarget.x - ped.group.position.x;
+          const dz = ped.shelterTarget.z - ped.group.position.z;
+          const dist = Math.hypot(dx, dz);
+          const fleeSpeed = ped.baseFleeSpeed || ped.speed * 2.5;
+          if (dist < 0.6) {
+            // Reached building — shelter inside
+            shelterEntity(ped.shelterTarget, ped, 'pedestrian');
+            // Remove from pedestrians array (still alive, just hidden)
+            ped.group.position.copy(ped.shelterTarget.group.position);
+            ped.group.position.y = 0;
+            pedestrians.splice(pi, 1);
+            continue;
           }
-        }
-        if (ped.fleeing) {
-          ped.group.position.z += ped.fleeDir * fleeSpeed * dt;
-          // Add slight random lateral movement
-          ped.group.position.x += (Math.sin(nowSec * 3 + ped.group.position.z) * 0.3) * dt;
-          ped.group.rotation.y = ped.fleeDir > 0 ? 0 : Math.PI;
+          ped.group.position.x += (dx / dist) * fleeSpeed * dt;
+          ped.group.position.z += (dz / dist) * fleeSpeed * dt;
+          ped.group.rotation.y = Math.atan2(dx, dz);
+        } else {
+          // Fallback: simple inland flight
+          let fleeSpeed = ped.baseFleeSpeed || ped.speed * 2.5;
+          // Start return to home after calm, staggered
+          if (calmElapsed > 0 && ped.returnDelay === 0) {
+            ped.returnDelay = 0.5 + Math.random() * 3.5; // stagger 0.5–4 s
+          }
+          if (calmElapsed > ped.returnDelay && ped.returnDelay > 0) {
+            const calmFactor = Math.min(1, (calmElapsed - ped.returnDelay) / 1.5);
+            fleeSpeed = ped.speed + (fleeSpeed - ped.speed) * (1 - calmFactor);
+            if (calmFactor >= 1) {
+              ped.fleeing = false;
+              ped.baseFleeSpeed = 0;
+              ped.returning = true;
+              ped.returnSpeed = ped.speed * 0.7;
+              ped.group.position.y = 0.03;
+            }
+          }
+          if (ped.fleeing) {
+            ped.group.position.z += ped.fleeDir * fleeSpeed * dt;
+            ped.group.position.x += (Math.sin(nowSec * 3 + ped.group.position.z) * 0.3) * dt;
+            ped.group.rotation.y = ped.fleeDir > 0 ? 0 : Math.PI;
+          }
         }
       } else if (!ped.returning) {
         // Normal sidewalk walking
@@ -3507,10 +3710,16 @@ function gameLoop() {
         const vInPanic = isInPanicZone(v.group.position.z, v.group.position.x);
 
         if (alertTriggered && panicElapsed > v.panicDelay && !v.fleeing && vInPanic) {
-          // ABANDON cart and flee inland
+          // ABANDON cart and flee toward nearest safe building
           v.fleeing = true;
-          v.fleeSpeed = 1.5 + Math.random() * 2.0;
-          v.fleeDir = nextWaveDir === 'north' ? -1 : 1; // away from wave
+          const target = findNearestSafeBuilding(v.group.position.x, v.group.position.z);
+          if (target) {
+            v.shelterTarget = target;
+            v.fleeSpeed = 2.0 + Math.random() * 2.0;
+          } else {
+            v.fleeDir = nextWaveDir === 'north' ? -1 : 1;
+            v.fleeSpeed = 1.5 + Math.random() * 2.0;
+          }
         }
 
         // Return to home position after calm
@@ -3532,18 +3741,35 @@ function gameLoop() {
         }
 
         if (v.fleeing) {
-          // Flee inland
-          v.group.position.z += v.fleeDir * v.fleeSpeed * dt;
-          v.group.position.x += (Math.sin(nowSec * 2.5 + v.group.position.z * 2) * 0.4) * dt;
-          v.group.rotation.y = v.fleeDir > 0 ? 0 : Math.PI;
-          // Staggered return after calm
-          if (calmElapsed > 0 && v.returnDelay === 0) {
-            v.returnDelay = 1 + Math.random() * 3; // stagger 1–4 s
-          }
-          if (calmElapsed > v.returnDelay && v.returnDelay > 0) {
-            v.fleeing = false;
-            v.returning = true;
-            v.returnSpeed = v.wanderSpeed;
+          if (v.shelterTarget) {
+            // Run toward safe building
+            const dx = v.shelterTarget.x - v.group.position.x;
+            const dz = v.shelterTarget.z - v.group.position.z;
+            const dist = Math.hypot(dx, dz);
+            if (dist < 0.6) {
+              shelterEntity(v.shelterTarget, v, 'vendor');
+              v.group.position.copy(v.shelterTarget.group.position);
+              v.group.position.y = 0;
+              beachVendors.splice(vi, 1);
+              continue;
+            }
+            v.group.position.x += (dx / dist) * v.fleeSpeed * dt;
+            v.group.position.z += (dz / dist) * v.fleeSpeed * dt;
+            v.group.rotation.y = Math.atan2(dx, dz);
+          } else {
+            // Flee inland
+            v.group.position.z += v.fleeDir * v.fleeSpeed * dt;
+            v.group.position.x += (Math.sin(nowSec * 2.5 + v.group.position.z * 2) * 0.4) * dt;
+            v.group.rotation.y = v.fleeDir > 0 ? 0 : Math.PI;
+            // Staggered return after calm
+            if (calmElapsed > 0 && v.returnDelay === 0) {
+              v.returnDelay = 1 + Math.random() * 3; // stagger 1–4 s
+            }
+            if (calmElapsed > v.returnDelay && v.returnDelay > 0) {
+              v.fleeing = false;
+              v.returning = true;
+              v.returnSpeed = v.wanderSpeed;
+            }
           }
         } else if (!v.returning) {
           // Normal wander: slow random movement with pauses
@@ -3636,12 +3862,13 @@ function gameLoop() {
       }
     }
 
-    // ── Waterfront decor swept by waves ────────────────────────
-    // Static scenery on the promenade: planks, guardrails, benches,
-    // palm trees, kiosk — all carried away when a wave hits them.
-    for (let di = waterfrontDecor.length - 1; di >= 0; di--) {
-      const d = waterfrontDecor[di];
-      if (!d.alive) { waterfrontDecor.splice(di, 1); continue; }
+    // ── Scenery decor swept by waves ──────────────────────────
+    // All decorative scenery items — promenade planks, guardrails,
+    // benches, palm trees, kiosk, promenade lamps, street lamps —
+    // carried away when a wave hits them.
+    for (let di = sceneryDecor.length - 1; di >= 0; di--) {
+      const d = sceneryDecor[di];
+      if (!d.alive) { sceneryDecor.splice(di, 1); continue; }
       for (const wave of waves) {
         let hit = false;
         for (const seg of wave.segments) {
@@ -3654,13 +3881,43 @@ function gameLoop() {
         }
         if (hit) {
           spawnSweepParticles(d.group.position.x, d._posY != null ? d._posY + 0.3 : 0.4, d.group.position.z);
+          if (d._headY) {
+            spawnDestroyParticles(d.group.position.x, d._headY, d.group.position.z);
+          }
           d.group.removeFromParent();
           d.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
           d.alive = false;
+          // Also remove from streetLamps so night lighting doesn't touch disposed materials
+          if (d._type === 'streetLamp' || d._type === 'promLamp') {
+            const slIdx = streetLamps.findIndex(sl => sl.group === d.group);
+            if (slIdx !== -1) streetLamps.splice(slIdx, 1);
+          }
           break;
         }
       }
-      if (!d.alive) waterfrontDecor.splice(di, 1);
+      if (!d.alive) sceneryDecor.splice(di, 1);
+    }
+
+    // ── Parked cars swept by waves ──────────────────────────────
+    for (let pi = parkedCars.length - 1; pi >= 0; pi--) {
+      const pc = parkedCars[pi];
+      for (const wave of waves) {
+        let hit = false;
+        for (const seg of wave.segments) {
+          if (!seg.alive) continue;
+          if (Math.abs(pc.z - wave.z) < 1.3 && Math.abs(pc.x - seg.x) < 0.8) {
+            hit = true;
+            break;
+          }
+        }
+        if (hit) {
+          spawnSweepParticles(pc.group.position.x, 0.3, pc.group.position.z);
+          pc.group.removeFromParent();
+          pc.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+          parkedCars.splice(pi, 1);
+          break;
+        }
+      }
     }
 
     // ── Beach/sea population ──────────────────────────────────
@@ -3693,26 +3950,49 @@ function gameLoop() {
         }
 
         if (alertTriggered && panicElapsed > bp.panicDelay && !bp.fleeing && bpInPanic) {
-          // Swimmer flees: run ashore then inland
+          // Swimmer flees: run toward nearest safe building (or inland if none)
           bp.fleeing = true;
-          bp.fleeDir = dirSign; // away from wave
-          bp.fleeSpeed = 2.0 + Math.random() * 2.5;
+          const target = findNearestSafeBuilding(bp.group.position.x, bp.group.position.z);
+          if (target) {
+            bp.shelterTarget = target;
+            bp.fleeSpeed = 2.5 + Math.random() * 2.5;
+          } else {
+            bp.fleeDir = dirSign;
+            bp.fleeSpeed = 2.0 + Math.random() * 2.5;
+          }
         }
         if (bp.fleeing) {
-          // Run inland: move Z away from wave, swimmer rises as they approach shore
-          bp.group.position.z += bp.fleeDir * bp.fleeSpeed * dt;
-          bp.group.position.x += (Math.sin(nowSec * 4 + bp.group.position.z * 2) * 0.4) * dt;
-          bp.group.rotation.y = bp.fleeDir > 0 ? 0 : Math.PI;
-          // Rise above water as they run ashore
-          if (bp.group.position.y < 0.5) bp.group.position.y += 1.2 * dt;
-          // Staggered return after calm instead of escaping
-          if (calmElapsed > 0 && bp.returnDelay === 0) {
-            bp.returnDelay = 0.5 + Math.random() * 2.5; // stagger 0.5–3 s
-          }
-          if (calmElapsed > bp.returnDelay && bp.returnDelay > 0) {
-            bp.fleeing = false;
-            bp.returning = true;
-            bp.returnSpeed = 1.5 + Math.random() * 1.5;
+          if (bp.shelterTarget) {
+            const dx = bp.shelterTarget.x - bp.group.position.x;
+            const dz = bp.shelterTarget.z - bp.group.position.z;
+            const dist = Math.hypot(dx, dz);
+            if (dist < 0.6) {
+              shelterEntity(bp.shelterTarget, bp, 'swimmer');
+              bp.group.position.copy(bp.shelterTarget.group.position);
+              bp.group.position.y = 0;
+              beachPeople.splice(bi, 1);
+              continue;
+            }
+            bp.group.position.x += (dx / dist) * bp.fleeSpeed * dt;
+            bp.group.position.z += (dz / dist) * bp.fleeSpeed * dt;
+            bp.group.rotation.y = Math.atan2(dx, dz);
+            if (bp.group.position.y < 0.5) bp.group.position.y += 1.2 * dt;
+          } else {
+            // Run inland: move Z away from wave, swimmer rises as they approach shore
+            bp.group.position.z += bp.fleeDir * bp.fleeSpeed * dt;
+            bp.group.position.x += (Math.sin(nowSec * 4 + bp.group.position.z * 2) * 0.4) * dt;
+            bp.group.rotation.y = bp.fleeDir > 0 ? 0 : Math.PI;
+            // Rise above water as they run ashore
+            if (bp.group.position.y < 0.5) bp.group.position.y += 1.2 * dt;
+            // Staggered return after calm instead of escaping
+            if (calmElapsed > 0 && bp.returnDelay === 0) {
+              bp.returnDelay = 0.5 + Math.random() * 2.5; // stagger 0.5–3 s
+            }
+            if (calmElapsed > bp.returnDelay && bp.returnDelay > 0) {
+              bp.fleeing = false;
+              bp.returning = true;
+              bp.returnSpeed = 1.5 + Math.random() * 1.5;
+            }
           }
         } else if (!bp.returning) {
           // Bobbing + slow drift in the water
@@ -3745,22 +4025,44 @@ function gameLoop() {
 
         if (alertTriggered && panicElapsed > bp.panicDelay && !bp.fleeing && bpInPanic) {
           bp.fleeing = true;
-          bp.fleeDir = dirSign;
-          bp.fleeSpeed = 2.5 + Math.random() * 2.0;
+          const target = findNearestSafeBuilding(bp.group.position.x, bp.group.position.z);
+          if (target) {
+            bp.shelterTarget = target;
+            bp.fleeSpeed = 3.0 + Math.random() * 2.0;
+          } else {
+            bp.fleeDir = dirSign;
+            bp.fleeSpeed = 2.5 + Math.random() * 2.0;
+          }
         }
         if (bp.fleeing) {
-          // Flee inland from the beach
-          bp.group.position.z += bp.fleeDir * bp.fleeSpeed * dt;
-          bp.group.position.x += (Math.sin(nowSec * 3.5 + bp.group.position.z) * 0.5) * dt;
-          bp.group.rotation.y = bp.fleeDir > 0 ? 0 : Math.PI;
-          // Staggered return after calm
-          if (calmElapsed > 0 && bp.returnDelay === 0) {
-            bp.returnDelay = 0.8 + Math.random() * 2.7; // stagger 0.8–3.5 s
-          }
-          if (calmElapsed > bp.returnDelay && bp.returnDelay > 0) {
-            bp.fleeing = false;
-            bp.returning = true;
-            bp.returnSpeed = bp.walkSpeed;
+          if (bp.shelterTarget) {
+            const dx = bp.shelterTarget.x - bp.group.position.x;
+            const dz = bp.shelterTarget.z - bp.group.position.z;
+            const dist = Math.hypot(dx, dz);
+            if (dist < 0.6) {
+              shelterEntity(bp.shelterTarget, bp, 'walker');
+              bp.group.position.copy(bp.shelterTarget.group.position);
+              bp.group.position.y = 0;
+              beachPeople.splice(bi, 1);
+              continue;
+            }
+            bp.group.position.x += (dx / dist) * bp.fleeSpeed * dt;
+            bp.group.position.z += (dz / dist) * bp.fleeSpeed * dt;
+            bp.group.rotation.y = Math.atan2(dx, dz);
+          } else {
+            // Flee inland from the beach
+            bp.group.position.z += bp.fleeDir * bp.fleeSpeed * dt;
+            bp.group.position.x += (Math.sin(nowSec * 3.5 + bp.group.position.z) * 0.5) * dt;
+            bp.group.rotation.y = bp.fleeDir > 0 ? 0 : Math.PI;
+            // Staggered return after calm
+            if (calmElapsed > 0 && bp.returnDelay === 0) {
+              bp.returnDelay = 0.8 + Math.random() * 2.7; // stagger 0.8–3.5 s
+            }
+            if (calmElapsed > bp.returnDelay && bp.returnDelay > 0) {
+              bp.fleeing = false;
+              bp.returning = true;
+              bp.returnSpeed = bp.walkSpeed;
+            }
           }
         } else if (!bp.returning) {
           // Slow walk with pauses
@@ -3816,21 +4118,45 @@ function gameLoop() {
 
         if (alertTriggered && panicElapsed > bp.panicDelay && !bp.fleeing && bpInPanic) {
           bp.fleeing = true;
-          bp.fleeDir = dirSign;
-          bp.fleeSpeed = 2.5 + Math.random() * 2.5;
+          const target = findNearestSafeBuilding(bp.group.position.x, bp.group.position.z);
+          if (target) {
+            bp.shelterTarget = target;
+            bp.fleeSpeed = 3.0 + Math.random() * 2.5;
+          } else {
+            bp.fleeDir = dirSign;
+            bp.fleeSpeed = 2.5 + Math.random() * 2.5;
+          }
         }
         if (bp.fleeing) {
-          bp.group.position.z += bp.fleeDir * bp.fleeSpeed * dt;
-          bp.group.position.x += (Math.sin(nowSec * 3 + bp.group.position.z) * 0.5) * dt;
-          bp.group.rotation.y = bp.fleeDir > 0 ? 0 : Math.PI;
-          // Staggered return after calm
-          if (calmElapsed > 0 && bp.returnDelay === 0) {
-            bp.returnDelay = 0.5 + Math.random() * 2.5; // stagger 0.5–3 s
-          }
-          if (calmElapsed > bp.returnDelay && bp.returnDelay > 0) {
-            bp.fleeing = false;
-            bp.returning = true;
-            bp.returnSpeed = bp.walkSpeed || 1.5;
+          if (bp.shelterTarget) {
+            const dx = bp.shelterTarget.x - bp.group.position.x;
+            const dz = bp.shelterTarget.z - bp.group.position.z;
+            const dist = Math.hypot(dx, dz);
+            if (dist < 0.6) {
+              shelterEntity(bp.shelterTarget, bp, 'ballplayer');
+              bp.group.position.copy(bp.shelterTarget.group.position);
+              bp.group.position.y = 0;
+              // Hide ball
+              if (bp.ball && bp.ball.parent) bp.ball.visible = false;
+              beachPeople.splice(bi, 1);
+              continue;
+            }
+            bp.group.position.x += (dx / dist) * bp.fleeSpeed * dt;
+            bp.group.position.z += (dz / dist) * bp.fleeSpeed * dt;
+            bp.group.rotation.y = Math.atan2(dx, dz);
+          } else {
+            bp.group.position.z += bp.fleeDir * bp.fleeSpeed * dt;
+            bp.group.position.x += (Math.sin(nowSec * 3 + bp.group.position.z) * 0.5) * dt;
+            bp.group.rotation.y = bp.fleeDir > 0 ? 0 : Math.PI;
+            // Staggered return after calm
+            if (calmElapsed > 0 && bp.returnDelay === 0) {
+              bp.returnDelay = 0.5 + Math.random() * 2.5; // stagger 0.5–3 s
+            }
+            if (calmElapsed > bp.returnDelay && bp.returnDelay > 0) {
+              bp.fleeing = false;
+              bp.returning = true;
+              bp.returnSpeed = bp.walkSpeed || 1.5;
+            }
           }
         } else if (!bp.returning) {
           // Play with the ball: kick it around
@@ -3849,6 +4175,78 @@ function gameLoop() {
             bp.group.rotation.y = bp.ballPhase * 0.7;
             if (Math.random() < 0.002) {
               bp.idleUntil = nowSec + 1 + Math.random() * 2;
+            }
+          }
+        }
+      }
+
+      if (bp.type === 'sunbather') {
+        // Lying on transat — stand up to flee, walk to shelter
+        if (!bp.fleeing && bp.returning) {
+          const dxh = bp.homeX - bp.group.position.x;
+          const dzh = bp.homeZ - bp.group.position.z;
+          const distHome = Math.hypot(dxh, dzh);
+          if (distHome < 0.3) {
+            bp.group.position.set(bp.homeX, 0.06, bp.homeZ);
+            bp.isLying = true;
+            bp.returning = false;
+            bp.returnDelay = 0;
+            // Lie down: rotate body mesh flat, head at body end
+            const bm = bp.group.userData.bodyMesh;
+            const hm = bp.group.userData.headMesh;
+            if (bm) bm.rotation.z = Math.PI / 2;
+            if (hm) hm.position.set(0, 0.06, -0.13);
+          } else {
+            const spd = bp.returnSpeed || 1.5;
+            bp.group.position.x += (dxh / distHome) * spd * dt;
+            bp.group.position.z += (dzh / distHome) * spd * dt;
+            bp.group.rotation.y = Math.atan2(dxh, dzh);
+          }
+        }
+
+        if (alertTriggered && panicElapsed > bp.panicDelay && !bp.fleeing && bpInPanic) {
+          bp.fleeing = true;
+          bp.isLying = false;
+          // Stand up: body vertical, head above
+          const bm = bp.group.userData.bodyMesh;
+          const hm = bp.group.userData.headMesh;
+          if (bm) bm.rotation.z = 0;
+          if (hm) hm.position.set(0, 0.18, 0);
+          const target = findNearestSafeBuilding(bp.group.position.x, bp.group.position.z);
+          if (target) {
+            bp.shelterTarget = target;
+            bp.fleeSpeed = 3.0 + Math.random() * 2.0;
+          } else {
+            bp.fleeDir = dirSign;
+            bp.fleeSpeed = 2.5 + Math.random() * 2.0;
+          }
+        }
+        if (bp.fleeing) {
+          if (bp.shelterTarget) {
+            const dx = bp.shelterTarget.x - bp.group.position.x;
+            const dz = bp.shelterTarget.z - bp.group.position.z;
+            const dist = Math.hypot(dx, dz);
+            if (dist < 0.6) {
+              shelterEntity(bp.shelterTarget, bp, 'sunbather');
+              bp.group.position.copy(bp.shelterTarget.group.position);
+              bp.group.position.y = 0;
+              beachPeople.splice(bi, 1);
+              continue;
+            }
+            bp.group.position.x += (dx / dist) * bp.fleeSpeed * dt;
+            bp.group.position.z += (dz / dist) * bp.fleeSpeed * dt;
+            bp.group.rotation.y = Math.atan2(dx, dz);
+          } else {
+            bp.group.position.z += bp.fleeDir * bp.fleeSpeed * dt;
+            bp.group.position.x += (Math.sin(nowSec * 3 + bp.group.position.z) * 0.4) * dt;
+            bp.group.rotation.y = bp.fleeDir > 0 ? 0 : Math.PI;
+            if (calmElapsed > 0 && bp.returnDelay === 0) {
+              bp.returnDelay = 0.8 + Math.random() * 2.7;
+            }
+            if (calmElapsed > bp.returnDelay && bp.returnDelay > 0) {
+              bp.fleeing = false;
+              bp.returning = true;
+              bp.returnSpeed = 1.5 + Math.random() * 1.0;
             }
           }
         }
@@ -3873,6 +4271,41 @@ function gameLoop() {
           }
         }
         if (!bp.alive) break;
+      }
+    }
+
+    // ── Shelter exit: staggered re-emergence after calm ──────────
+    if (calmElapsed > 0 && shelteredEntities.length > 0) {
+      for (let si = shelteredEntities.length - 1; si >= 0; si--) {
+        const se = shelteredEntities[si];
+        se.exitDelay -= dt;
+        if (se.exitDelay <= 0) {
+          // Re-emerge from building
+          const ref = se.entityRef;
+          ref.group.visible = true;
+          ref.group.position.set(
+            se.building.x + (Math.random() - 0.5) * se.building.w,
+            0.04,
+            se.building.z - se.building.d / 2 - 0.3
+          );
+          ref.fleeing = false;
+          ref.returning = true;
+          ref.returnDelay = 0;
+          ref.returnSpeed = ref.speed || ref.walkSpeed || ref.wanderSpeed || 1.5;
+          ref.alive = true;
+
+          // Re-insert into the appropriate active array
+          if (se.entityType === 'pedestrian') {
+            pedestrians.push(ref);
+          } else if (se.entityType === 'vendor') {
+            beachVendors.push(ref);
+          } else {
+            // swimmer, walker, ballplayer
+            beachPeople.push(ref);
+          }
+
+          shelteredEntities.splice(si, 1);
+        }
       }
     }
 
@@ -3988,10 +4421,10 @@ window.restartGame = function() {
     if (v.cartAlive) { v.cartGroup.removeFromParent(); v.cartGroup.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
   });
   beachVendors = [];
-  waterfrontDecor.forEach(d => {
+  sceneryDecor.forEach(d => {
     if (d.alive) { d.group.removeFromParent(); d.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
   });
-  waterfrontDecor = [];
+  sceneryDecor = [];
   beachPeople.forEach(bp => {
     if (bp.alive) { bp.group.removeFromParent(); bp.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
     if (bp.ball && bp.ball.parent) { bp.ball.removeFromParent(); bp.ball.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
@@ -4019,6 +4452,20 @@ window.restartGame = function() {
   });
   streetLamps = [];
   nightBuildingData = [];
+
+  // Clean sheltered entities
+  shelteredEntities.forEach(se => {
+    se.entityRef.group.removeFromParent();
+    se.entityRef.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+  });
+  shelteredEntities = [];
+
+  // Clean parked cars
+  parkedCars.forEach(pc => {
+    pc.group.removeFromParent();
+    pc.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+  });
+  parkedCars = [];
 
   $message.classList.remove('show');
   $gameoverPanel.classList.remove('visible');
@@ -4034,10 +4481,10 @@ window.goToMenu = function() {
     if (v.cartAlive) { v.cartGroup.removeFromParent(); v.cartGroup.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
   });
   beachVendors = [];
-  waterfrontDecor.forEach(d => {
+  sceneryDecor.forEach(d => {
     if (d.alive) { d.group.removeFromParent(); d.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
   });
-  waterfrontDecor = [];
+  sceneryDecor = [];
   beachPeople.forEach(bp => {
     if (bp.alive) { bp.group.removeFromParent(); bp.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
     if (bp.ball && bp.ball.parent) { bp.ball.removeFromParent(); bp.ball.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
@@ -4065,6 +4512,20 @@ window.goToMenu = function() {
   });
   streetLamps = [];
   nightBuildingData = [];
+
+  // Clean sheltered entities
+  shelteredEntities.forEach(se => {
+    se.entityRef.group.removeFromParent();
+    se.entityRef.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+  });
+  shelteredEntities = [];
+
+  // Clean parked cars
+  parkedCars.forEach(pc => {
+    pc.group.removeFromParent();
+    pc.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+  });
+  parkedCars = [];
 
   // Dispose entire map group
   disposeGroup(mapGroup);
@@ -4179,6 +4640,15 @@ gameLoop();
 
 console.log('  🗺️  Cartes : ' + Object.keys(MAPS).join(', '));
 console.log('  🖱️ Clic = placer | ⌨️ 1/2/3 = tier mur | T = tranchée | R = recommencer | M = menu');
+
+// Debug helpers for inspection
+window.__getSceneryDecor = () => sceneryDecor;
+window.__getBeachPeople = () => beachPeople;
+window.__getStreetLamps = () => streetLamps;
+window.__getParkedCars = () => parkedCars;
+window.__getWaves = () => waves;
+window.__getShelteredEntities = () => shelteredEntities;
+window.__getWaveCountdown = () => waveCountdown;
 </script>
 </body>
 </html>

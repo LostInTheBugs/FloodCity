@@ -73,7 +73,15 @@ grep "const GAME_VERSION" index.html && cat version.json
 
 Les champs `version` (dans `version.json`) et `GAME_VERSION` (dans `index.html`) doivent être identiques.
 
+## 🔬 Harnais de vérification visuelle
+
+Le projet inclut un harnais de test automatisé dans `visual-harness/`. Il lance le jeu dans un navigateur headless, place des défenses, capture des écrans de jour et de nuit, mesure les performances et détecte le scintillement (z-fighting). Consulter [`visual-harness/README.md`](visual-harness/README.md) pour l'installation et l'utilisation.
+
 ## 📋 Notes de version
+
+### 2026.07.011
+- L'éclairage nocturne des lampadaires est adouci : les halos ne saturent plus la chaussée en blanc et l'ambiance bleutée de la nuit redevient dominante, pour une atmosphère plus naturelle
+- Amélioration de la lisibilité du décor en mode nuit
 
 ### 2026.07.010
 - **Changement de jeu majeur** : il est désormais possible de construire murs et tranchées sur toute la bande entre la ville et la mer, plage comprise — cette zone était bloquée par erreur alors qu'elle est le cœur de la défense en profondeur

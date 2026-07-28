@@ -1,0 +1,14 @@
+{
+  "name": "floodcity-visual-harness",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Visual verification harness for Flood City — headless gameplay, screenshots, and flicker detection",
+  "scripts": {
+    "test": "node harness.js",
+    "test:url": "node harness.js"
+  },
+  "dependencies": {
+    "puppeteer": "^24.15.0",
+    "pngjs": "^7.0.0"
+  }
+}

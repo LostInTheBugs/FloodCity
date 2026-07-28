@@ -388,7 +388,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ─── Version ──────────────────────────────────────────────────
-const GAME_VERSION = "2026.07.010";
+const GAME_VERSION = "2026.07.011";
 document.querySelector("meta[name=version]").setAttribute("content", GAME_VERSION);
 document.getElementById('home-version').textContent = 'v' + GAME_VERSION;
 document.getElementById('hud-version').textContent = 'v' + GAME_VERSION;
@@ -3005,7 +3005,7 @@ function updateNightLighting(t) {
     );
     sl.lampEmissive.material.emissiveIntensity = t * 1.5;
     if (sl.haloPlane) {
-      sl.haloPlane.material.opacity = t * 0.70;
+      sl.haloPlane.material.opacity = t * 0.25;
     }
   }
 
@@ -3070,12 +3070,23 @@ function createStreetLamp(x, z) {
   housing.position.set(0.6, 1.98, 0);
   group.add(housing);
 
-  // Ground halo — flat additive plane casting a warm puddle on the ground
-  const haloGeo = new THREE.PlaneGeometry(3.2, 4.0);
+  // Ground halo — soft additive plane, radial falloff to avoid solid yellow blotches
+  const haloGeo = new THREE.PlaneGeometry(2.0, 2.6);
+  const haloCanvas = document.createElement('canvas');
+  haloCanvas.width = 128; haloCanvas.height = 128;
+  const ctx = haloCanvas.getContext('2d');
+  const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255,200,80,1)');
+  grad.addColorStop(0.5, 'rgba(240,180,70,0.7)');
+  grad.addColorStop(0.85, 'rgba(200,160,60,0.15)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  const haloTexture = new THREE.CanvasTexture(haloCanvas);
   const haloMat = new THREE.MeshBasicMaterial({
-    color: 0xffaa44, transparent: true, opacity: 0,
-    side: THREE.DoubleSide, depthWrite: false,
-    blending: THREE.AdditiveBlending
+    color: 0xffcc55, transparent: true, opacity: 0,
+    map: haloTexture, side: THREE.DoubleSide,
+    depthWrite: false, blending: THREE.AdditiveBlending
   });
   const halo = new THREE.Mesh(haloGeo, haloMat);
   halo.rotation.x = -Math.PI / 2;

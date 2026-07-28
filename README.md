@@ -75,6 +75,14 @@ Les champs `version` (dans `version.json`) et `GAME_VERSION` (dans `index.html`)
 
 ## 📋 Notes de version
 
+### 2026.07.007
+- La difficulté progresse sans plafond et les seuils de défaite s'adaptent à la taille de chaque carte — plus besoin de redémarrer après 5 vagues
+- Les meilleurs scores sont conservés par carte et affichés au menu, pour suivre sa progression d'une session à l'autre
+- La ville réagit aux alertes : voitures et piétons fuient la zone menacée, puis la vie reprend une fois le danger passé
+- La plage prend vie — baigneurs, promeneurs, joueurs de ballon et marchands ambulants qui abandonnent leur chariot quand la sirène retentit
+- Une boussole indique le nord et le front d'où arrive la prochaine vague, pour mieux anticiper ses défenses
+- Décor à l'échelle et placement revu — aucun bâtiment ne se construit plus sur la chaussée, les trottoirs restent dégagés
+
 ### 2026.07.006
 - Correction interne : la balise `<meta name="version">` n'est plus écrite en dur dans le HTML ; elle est remplie dynamiquement par le JavaScript depuis `GAME_VERSION`, rendant structurellement impossible la désynchronisation constatée entre les deux sources
 

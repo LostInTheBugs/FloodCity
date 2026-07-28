@@ -75,6 +75,9 @@ Les champs `version` (dans `version.json`) et `GAME_VERSION` (dans `index.html`)
 
 ## 📋 Notes de version
 
+### 2026.07.006
+- Correction interne : la balise `<meta name="version">` n'est plus écrite en dur dans le HTML ; elle est remplie dynamiquement par le JavaScript depuis `GAME_VERSION`, rendant structurellement impossible la désynchronisation constatée entre les deux sources
+
 ### 2026.07.005
 - Correction d'un bug d'affichage : un immeuble détruit par une vague ne restait plus visible à l'écran
 - Détection automatique de nouvelle version : un bandeau discret propose de recharger quand une mise à jour est disponible, sans jamais interrompre la partie

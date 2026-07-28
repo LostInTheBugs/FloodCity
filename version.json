@@ -1,5 +1,5 @@
 {
-  "version": "2026.07.005",
+  "version": "2026.07.006",
   "date": "2026-07-28",
-  "notes": "Correction bug affichage immeuble détruit, détection auto nouvelle version avec bandeau non bloquant"
+  "notes": "Suppression de la balise meta version dupliquée — la version n'est plus écrite en dur dans le HTML servi; le JavaScript la remplit depuis GAME_VERSION, rendant la désynchronisation structurellement impossible"
 }

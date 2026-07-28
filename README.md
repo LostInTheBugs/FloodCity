@@ -75,6 +75,11 @@ Les champs `version` (dans `version.json`) et `GAME_VERSION` (dans `index.html`)
 
 ## 📋 Notes de version
 
+### 2026.07.010
+- **Changement de jeu majeur** : il est désormais possible de construire murs et tranchées sur toute la bande entre la ville et la mer, plage comprise — cette zone était bloquée par erreur alors qu'elle est le cœur de la défense en profondeur
+- Un front de mer aménagé fait son apparition : promenade, garde-corps le long du sable, palmiers, mobilier — le tout traversable, on peut bâtir par-dessus
+- Le décor de plage et les défenses cohabitent naturellement, sans plus jamais se bloquer mutuellement
+
 ### 2026.07.009
 - Correction d'un scintillement des routes en mode nuit — la grille routière ne clignote plus lorsqu'on déplace la caméra
 - Amélioration de la stabilité d'affichage des éléments au sol en conditions de faible luminosité

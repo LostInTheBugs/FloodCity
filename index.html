@@ -388,7 +388,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ─── Version ──────────────────────────────────────────────────
-const GAME_VERSION = "2026.07.009";
+const GAME_VERSION = "2026.07.010";
 document.querySelector("meta[name=version]").setAttribute("content", GAME_VERSION);
 document.getElementById('home-version').textContent = 'v' + GAME_VERSION;
 document.getElementById('hud-version').textContent = 'v' + GAME_VERSION;
@@ -761,6 +761,7 @@ let isNight = false;
 let nightBlend = 0;   // 0=day, 1=night (lerped)
 let nightTarget = 0;
 let streetLamps = [];  // { group, lampEmissive, haloPlane, x, z }
+let waterfrontDecor = []; // { group, x, z, alive } — traversable waterfront scenery
 let nightBuildingData = []; // per-building: { emissiveMap, bodyMat, emissiveIntensity }
 
 const BUILDING_COLORS = [
@@ -1136,6 +1137,271 @@ function createPedestrian(roadIdx, side) {
     returning: false, returnDelay: 0, returnSpeed: 0,
     homeX: x, homeZ: z, homeRoadIdx: roadIdx, homeSide: side,
     panicDelay: 0.15 + Math.random() * 0.6 };
+}
+
+// ─── Waterfront decor (littoral only) ───────────────────────
+// The zone between the beach road (z=-11) and the first horizontal road
+// (z=-4) was empty — no buildings (blocked by buildZMin) and no scenery.
+// This function fills it with a traversable promenade: planks, benches,
+// palms, guardrails, a kiosk, and lamps.  Everything is purely visual
+// (added to cityGroup, no collision) so walls and trenches can be built
+// right through it — this zone IS the defense front line.
+//
+// Heights: everything sits on or just above Y_GROUND (0.00).  We avoid
+// Y_BEACH (0.01), Y_ROAD (0.04), Y_SIDEWALK (0.07) and all other Y_*
+// constants to prevent coplanar z-fighting.
+function createWaterfrontDecor(map) {
+  const zBeach = -11.0;        // beach road centre
+  const zPromenade = -10.2;    // main boardwalk centre
+  const zFence = -11.7;        // guardrail line (just north of sand)
+  const zPalmRow = -9.5;       // palm tree alignment
+  const zBenchRow = -8.8;      // bench row
+  const zKioskRow = -7.0;      // kiosk area
+  const zLampRow = -9.0;       // promenade lamps
+
+  const xMin = -map.terrainHalf + 1;
+  const xMax = map.terrainHalf - 1;
+
+  const WOOD = new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.85 });
+  const WOOD_DARK = new THREE.MeshStandardMaterial({ color: 0x6b5535, roughness: 0.8 });
+  const METAL = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.3, metalness: 0.8 });
+  const WHITE = new THREE.MeshStandardMaterial({ color: 0xf0ede0, roughness: 0.4 });
+  const PALM_TRUNK = new THREE.MeshStandardMaterial({ color: 0xb8956a, roughness: 0.8 });
+  const PALM_LEAF = new THREE.MeshStandardMaterial({ color: 0x3d8a28, roughness: 0.7, side: THREE.DoubleSide });
+  const CANVAS_STRIPES = [0xff5533, 0xffffff, 0x4488cc];
+
+  // ── Boardwalk planks ────────────────────────────────────
+  const plankLen = 1.8;
+  const plankGap = 0.15;
+  const promenadeHalfW = 1.3;
+  for (let px = xMin; px < xMax; px += plankLen + plankGap) {
+    // Two parallel plank strips (left + right of centre)
+    for (const sx of [-promenadeHalfW, promenadeHalfW]) {
+      const plankGeo = new THREE.BoxGeometry(plankLen, 0.025, 0.28);
+      const plank = new THREE.Mesh(plankGeo, WOOD.clone());
+      plank.position.set(px + plankLen / 2, 0.025 / 2, zPromenade + sx);
+      plank.receiveShadow = true;
+      plank.castShadow = true;
+      cityGroup.add(plank);
+      const entry = { group: plank, x: plank.position.x, z: plank.position.z, alive: true,
+        _type: 'plank', _posY: plank.position.y };
+      waterfrontDecor.push(entry);
+    }
+  }
+  // Cross-ties every few metres
+  for (let cx = xMin + 0.5; cx < xMax; cx += 4.5) {
+    const tieGeo = new THREE.BoxGeometry(0.15, 0.02, promenadeHalfW * 2 + 0.15);
+    const tie = new THREE.Mesh(tieGeo, WOOD_DARK.clone());
+    tie.position.set(cx, 0.02 / 2, zPromenade);
+    tie.receiveShadow = true;
+    cityGroup.add(tie);
+    waterfrontDecor.push({ group: tie, x: tie.position.x, z: tie.position.z, alive: true,
+      _type: 'tie', _posY: tie.position.y });
+  }
+
+  // ── Guardrail along beach edge ──────────────────────────
+  const railSpacing = 0.5;
+  for (let rx = xMin; rx < xMax; rx += railSpacing) {
+    const postGeo = new THREE.CylinderGeometry(0.025, 0.03, 0.55, 6);
+    const post = new THREE.Mesh(postGeo, WOOD_DARK.clone());
+    post.position.set(rx, 0.55 / 2, zFence);
+    post.castShadow = true;
+    cityGroup.add(post);
+    waterfrontDecor.push({ group: post, x: rx, z: zFence, alive: true,
+      _type: 'railPost', _posY: post.position.y });
+  }
+  // Horizontal rail bars (segments of ~3 units)
+  for (let rb = xMin; rb < xMax; rb += 3.0) {
+    for (const ry of [0.18, 0.38, 0.52]) {
+      const railGeo = new THREE.BoxGeometry(3.0, 0.03, 0.04);
+      const rail = new THREE.Mesh(railGeo, METAL.clone());
+      rail.position.set(rb + 1.5, ry, zFence);
+      rail.castShadow = true;
+      cityGroup.add(rail);
+      waterfrontDecor.push({ group: rail, x: rail.position.x, z: zFence, alive: true,
+        _type: 'railBar', _posY: rail.position.y });
+    }
+  }
+
+  // ── Palm trees (every ~3.5 units, alternating offset) ───
+  for (let px = xMin + 0.4; px < xMax; px += 3.5) {
+    const pz = zPalmRow + (Math.abs(px % 7) < 3.5 ? 0.3 : -0.3);
+    const palmH = 1.8 + Math.random() * 1.2;
+    const palmGrp = new THREE.Group();
+
+    // Trunk — slightly curved (two stacked cylinders with offset)
+    const trunkBotGeo = new THREE.CylinderGeometry(0.06, 0.09, palmH * 0.55, 8);
+    const trunkBot = new THREE.Mesh(trunkBotGeo, PALM_TRUNK.clone());
+    trunkBot.position.y = palmH * 0.275;
+    trunkBot.position.x = -0.04;
+    trunkBot.castShadow = true;
+    palmGrp.add(trunkBot);
+
+    const trunkTopGeo = new THREE.CylinderGeometry(0.04, 0.06, palmH * 0.45, 8);
+    const trunkTop = new THREE.Mesh(trunkTopGeo, PALM_TRUNK.clone());
+    trunkTop.position.y = palmH * 0.55 + palmH * 0.225;
+    trunkTop.position.x = -0.06;
+    trunkTop.castShadow = true;
+    palmGrp.add(trunkTop);
+
+    // Fronds — radiating cones at top
+    const frondCount = 6 + Math.floor(Math.random() * 4);
+    for (let f = 0; f < frondCount; f++) {
+      const frondGeo = new THREE.ConeGeometry(0.09, 0.9 + Math.random() * 0.5, 5);
+      const frond = new THREE.Mesh(frondGeo, PALM_LEAF.clone());
+      const angle = (f / frondCount) * Math.PI * 2 + Math.random() * 0.3;
+      const tilt = 0.5 + Math.random() * 0.8;
+      frond.position.y = palmH * 0.82;
+      frond.rotation.z = Math.cos(angle) * tilt;
+      frond.rotation.x = Math.sin(angle) * tilt;
+      frond.castShadow = true;
+      palmGrp.add(frond);
+    }
+    palmGrp.position.set(px, 0, pz);
+    cityGroup.add(palmGrp);
+    waterfrontDecor.push({ group: palmGrp, x: px, z: pz, alive: true,
+      _type: 'palm', _posY: 0 });
+  }
+
+  // ── Benches (facing south toward the sea) ────────────────
+  const benchSpacing = 2.8;
+  for (let bx = xMin + 1.0; bx < xMax - 1.5; bx += benchSpacing) {
+    if (Math.abs(bx) < 1.0) continue; // skip centre for kiosk area
+    const benchGrp = new THREE.Group();
+
+    // Seat
+    const seatGeo = new THREE.BoxGeometry(1.3, 0.04, 0.35);
+    const seat = new THREE.Mesh(seatGeo, WOOD.clone());
+    seat.position.y = 0.22;
+    seat.castShadow = true;
+    seat.receiveShadow = true;
+    benchGrp.add(seat);
+
+    // Backrest
+    const backGeo = new THREE.BoxGeometry(1.3, 0.22, 0.03);
+    const back = new THREE.Mesh(backGeo, WOOD.clone());
+    back.position.set(0, 0.33, 0.16); // north side = back
+    back.castShadow = true;
+    benchGrp.add(back);
+
+    // Legs (4)
+    for (const lx of [-0.55, 0.55]) {
+      for (const lz of [-0.13, 0.13]) {
+        const legGeo = new THREE.CylinderGeometry(0.025, 0.028, 0.22, 6);
+        const leg = new THREE.Mesh(legGeo, METAL.clone());
+        leg.position.set(lx, 0.11, lz);
+        leg.castShadow = true;
+        benchGrp.add(leg);
+      }
+    }
+    benchGrp.position.set(bx, 0, zBenchRow);
+    benchGrp.rotation.y = 0; // face south
+    cityGroup.add(benchGrp);
+    waterfrontDecor.push({ group: benchGrp, x: bx, z: zBenchRow, alive: true,
+      _type: 'bench', _posY: 0 });
+  }
+
+  // ── Kiosk ───────────────────────────────────────────────
+  const kioskX = 0;
+  const kioskZ = zKioskRow;
+  const kioskGrp = new THREE.Group();
+
+  // Base platform
+  const platGeo = new THREE.BoxGeometry(1.6, 0.06, 1.2);
+  const plat = new THREE.Mesh(platGeo, WOOD_DARK.clone());
+  plat.position.y = 0.06 / 2;
+  plat.receiveShadow = true;
+  kioskGrp.add(plat);
+
+  // Counter walls
+  const wallColors = [0xfff8f0, 0xf5f0e8, 0xffeedd];
+  for (const side of [
+    { x: 0, z: -0.55, w: 1.5, d: 0.04 },
+    { x: -0.75, z: 0, w: 0.04, d: 1.1 },
+    { x: 0.75, z: 0, w: 0.04, d: 1.1 },
+  ]) {
+    const wallGeo = new THREE.BoxGeometry(side.w, 0.5, side.d);
+    const wall = new THREE.Mesh(wallGeo, WHITE.clone());
+    wall.position.set(side.x, 0.06 + 0.25, side.z);
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    kioskGrp.add(wall);
+  }
+
+  // Countertop
+  const topGeo = new THREE.BoxGeometry(1.55, 0.03, 1.15);
+  const topMat = new THREE.MeshStandardMaterial({ color: 0xe8dcc8, roughness: 0.3, metalness: 0.1 });
+  const top = new THREE.Mesh(topGeo, topMat);
+  top.position.y = 0.06 + 0.5;
+  kioskGrp.add(top);
+
+  // Striped awning
+  const awningGeo = new THREE.BoxGeometry(1.75, 0.06, 1.35);
+  const awning = new THREE.Mesh(awningGeo, new THREE.MeshStandardMaterial({ color: 0xfefefe, roughness: 0.4 }));
+  awning.position.y = 0.06 + 0.5 + 0.03 + 0.15;
+  awning.castShadow = true;
+  kioskGrp.add(awning);
+
+  for (let si = 0; si < 6; si++) {
+    const sx = -0.78 + si * 0.31;
+    const stripeGeo = new THREE.BoxGeometry(0.16, 0.008, 1.37);
+    const stripe = new THREE.Mesh(stripeGeo,
+      new THREE.MeshStandardMaterial({ color: CANVAS_STRIPES[si % 3], roughness: 0.3 }));
+    stripe.position.set(sx, awning.position.y + 0.034, 0);
+    kioskGrp.add(stripe);
+  }
+
+  // Awning poles
+  for (const ap of [[-0.8, -0.6], [0.8, -0.6], [-0.8, 0.6], [0.8, 0.6]]) {
+    const poleGeo = new THREE.CylinderGeometry(0.018, 0.022, 0.60, 8);
+    const pole = new THREE.Mesh(poleGeo, METAL.clone());
+    pole.position.set(ap[0], 0.06 + 0.30, ap[1]);
+    pole.castShadow = true;
+    kioskGrp.add(pole);
+  }
+
+  kioskGrp.position.set(kioskX, 0, kioskZ);
+  cityGroup.add(kioskGrp);
+  waterfrontDecor.push({ group: kioskGrp, x: kioskX, z: kioskZ, alive: true,
+    _type: 'kiosk', _posY: 0 });
+
+  // ── Promenade lamps (shorter than street lamps, warm glow) ──
+  for (let lx = xMin + 1.5; lx < xMax - 1; lx += 6.0) {
+    const lampGrp = new THREE.Group();
+
+    // Short thick pole
+    const poleGeo = new THREE.CylinderGeometry(0.035, 0.05, 1.4, 6);
+    const pole = new THREE.Mesh(poleGeo, METAL.clone());
+    pole.position.y = 0.7;
+    pole.castShadow = true;
+    lampGrp.add(pole);
+
+    // Lantern housing
+    const housingGeo = new THREE.BoxGeometry(0.14, 0.18, 0.14);
+    const housingMat = new THREE.MeshStandardMaterial({
+      color: 0xffdd88, roughness: 0.2, metalness: 0.1,
+      emissive: 0xffdd88, emissiveIntensity: 0
+    });
+    const housing = new THREE.Mesh(housingGeo, housingMat);
+    housing.position.y = 1.32;
+    lampGrp.add(housing);
+
+    // Lantern cap
+    const capGeo = new THREE.ConeGeometry(0.09, 0.1, 6);
+    const cap = new THREE.Mesh(capGeo, METAL.clone());
+    cap.position.y = 1.46;
+    lampGrp.add(cap);
+
+    lampGrp.position.set(lx, 0, zLampRow);
+    lampGrp.userData = { lampEmissive: housing, isPromenadeLamp: true };
+    cityGroup.add(lampGrp);
+
+    // Also add to streetLamps for night lighting
+    streetLamps.push({ group: lampGrp, lampEmissive: housing, haloPlane: null, x: lx, z: zLampRow });
+
+    waterfrontDecor.push({ group: lampGrp, x: lx, z: zLampRow, alive: true,
+      _type: 'promLamp', _posY: 0, _lampHousing: housing });
+  }
 }
 
 // ─── Beach items (littoral only) ────────────────────────────
@@ -1599,6 +1865,7 @@ function generateMap(map) {
   roadPaths = [];
   pedestrians = [];
   beachVendors = [];
+  waterfrontDecor = [];
   beachPeople = [];
   ballGroup = null;
   buildings = [];
@@ -1887,6 +2154,9 @@ function generateMap(map) {
   // Beach items (only for maps with a beach zone)
   createBeachItems(map);
 
+  // Waterfront promenade (littoral only — fills the defense zone between beach and city)
+  if (!map.islandRadius) createWaterfrontDecor(map);
+
   // Beach vendors — placed on sand, peripheral for island, along littoral beach
   beachVendors = [];
   const vendorCount = 2 + Math.floor(Math.random() * 2); // 2–3
@@ -2114,13 +2384,24 @@ function placeTrench(worldPos) {
 }
 
 // ─── Placement zone check ───────────────────────────────────
+// Defense placement zone — walls and trenches can be placed anywhere on
+// playable terrain including the beach sand (sandbags on the beach are
+// the most natural use case).  The terrainHalf bounds check in placeWall /
+// placeTrench already keeps everything within the map, and the building
+// overlap check in isValidPlacement prevents stacking on structures.
+//
+// This is deliberately SEPARATE from the city-generation zone (buildZMin /
+// buildZMax) — those constants control where buildings SPAWN, not where
+// the player can build defenses.  Mixing the two was the original bug.
 function isInBuildZoneForPlacement(px, pz) {
   if (!currentMap) return false;
   if (currentMap.islandRadius) {
+    // Circular island: allow building up to the beach edge (islandRadius)
     return (px * px + pz * pz) <= currentMap.islandRadius * currentMap.islandRadius;
   }
-  // For littoral: check build zone + don't place on beach
-  if (pz < currentMap.buildZMin) return false;
+  // Littoral: full terrain is playable — beach sand included.
+  // The only hard boundary is terrainHalf (checked by callers).
+  // Water is outside terrainHalf so no explicit water check needed.
   return true;
 }
 
@@ -3344,6 +3625,33 @@ function gameLoop() {
       }
     }
 
+    // ── Waterfront decor swept by waves ────────────────────────
+    // Static scenery on the promenade: planks, guardrails, benches,
+    // palm trees, kiosk — all carried away when a wave hits them.
+    for (let di = waterfrontDecor.length - 1; di >= 0; di--) {
+      const d = waterfrontDecor[di];
+      if (!d.alive) { waterfrontDecor.splice(di, 1); continue; }
+      for (const wave of waves) {
+        let hit = false;
+        for (const seg of wave.segments) {
+          if (!seg.alive) continue;
+          const dz = d.group.position.z;
+          if (Math.abs(dz - wave.z) < 1.3 && Math.abs(d.group.position.x - seg.x) < 0.8) {
+            hit = true;
+            break;
+          }
+        }
+        if (hit) {
+          spawnSweepParticles(d.group.position.x, d._posY != null ? d._posY + 0.3 : 0.4, d.group.position.z);
+          d.group.removeFromParent();
+          d.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+          d.alive = false;
+          break;
+        }
+      }
+      if (!d.alive) waterfrontDecor.splice(di, 1);
+    }
+
     // ── Beach/sea population ──────────────────────────────────
     const dirSign = nextWaveDir === 'north' ? -1 : 1;
     for (let bi = beachPeople.length - 1; bi >= 0; bi--) {
@@ -3669,6 +3977,10 @@ window.restartGame = function() {
     if (v.cartAlive) { v.cartGroup.removeFromParent(); v.cartGroup.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
   });
   beachVendors = [];
+  waterfrontDecor.forEach(d => {
+    if (d.alive) { d.group.removeFromParent(); d.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
+  });
+  waterfrontDecor = [];
   beachPeople.forEach(bp => {
     if (bp.alive) { bp.group.removeFromParent(); bp.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
     if (bp.ball && bp.ball.parent) { bp.ball.removeFromParent(); bp.ball.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
@@ -3711,6 +4023,10 @@ window.goToMenu = function() {
     if (v.cartAlive) { v.cartGroup.removeFromParent(); v.cartGroup.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
   });
   beachVendors = [];
+  waterfrontDecor.forEach(d => {
+    if (d.alive) { d.group.removeFromParent(); d.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
+  });
+  waterfrontDecor = [];
   beachPeople.forEach(bp => {
     if (bp.alive) { bp.group.removeFromParent(); bp.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
     if (bp.ball && bp.ball.parent) { bp.ball.removeFromParent(); bp.ball.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }

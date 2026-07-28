@@ -75,6 +75,10 @@ Les champs `version` (dans `version.json`) et `GAME_VERSION` (dans `index.html`)
 
 ## 📋 Notes de version
 
+### 2026.07.009
+- Correction d'un scintillement des routes en mode nuit — la grille routière ne clignote plus lorsqu'on déplace la caméra
+- Amélioration de la stabilité d'affichage des éléments au sol en conditions de faible luminosité
+
 ### 2026.07.008
 - Les habitants se réfugient désormais dans les immeubles à l'approche d'une vague et en ressortent une fois le danger passé — ceux dont l'immeuble est détruit ne reviennent pas
 - Seuls les habitants réellement menacés par une vague paniquent et courent se mettre à l'abri ; le reste de la ville continue sa vie normalement

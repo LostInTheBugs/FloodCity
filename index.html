@@ -388,11 +388,26 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ─── Version ──────────────────────────────────────────────────
-const GAME_VERSION = "2026.07.008";
+const GAME_VERSION = "2026.07.009";
 document.querySelector("meta[name=version]").setAttribute("content", GAME_VERSION);
 document.getElementById('home-version').textContent = 'v' + GAME_VERSION;
 document.getElementById('hud-version').textContent = 'v' + GAME_VERSION;
 console.log("Flood City v" + GAME_VERSION);
+
+// ─── Ground‑level elevation stack (prevents z‑fighting) ──────
+// Layers ordered bottom→top. Each gap ≥0.03u — well above the
+// depth‑buffer resolution at near=0.5 / far=150 — so the GPU
+// always resolves the correct surface.
+const Y_GROUND    = 0.00;   // base terrain (implicit — no .position.y set)
+const Y_BEACH     = 0.01;   // sand ring / strip
+const Y_ROAD      = 0.04;   // road surface
+const Y_SIDEWALK  = 0.07;   // sidewalk
+const Y_FOAM      = 0.10;   // foam line / ring at beach–ocean boundary
+const Y_CROSSWALK = 0.13;   // pedestrian crossing stripes
+const Y_GRID      = 0.18;   // development grid decal
+const Y_FIRE_HALO = 0.22;   // campfire ground glow (additive decal)
+const Y_LAMP_HALO = 0.26;   // streetlamp ground puddle (additive decal)
+const Y_BELOW_ALL = -0.10;  // far‑ocean background plane (always behind terrain)
 
 // ─── Version update checker ──────────────────────────────────
 // Polls version.json periodically. Shows a dismissible banner
@@ -920,7 +935,7 @@ function createRoad(x1, z1, x2, z2) {
   const mat = new THREE.MeshStandardMaterial({ color: 0x3d3d45, roughness: 0.95 });
   const road = new THREE.Mesh(geo, mat);
   road.rotation.x = -Math.PI / 2; road.rotation.z = angle;
-  road.position.set((x1 + x2) / 2, 0.01, (z1 + z2) / 2);
+  road.position.set((x1 + x2) / 2, Y_ROAD, (z1 + z2) / 2);
   road.receiveShadow = true;
   cityGroup.add(road);
   roadPaths.push({ x1, z1, x2, z2, width });
@@ -1029,7 +1044,7 @@ function createSidewalks(road) {
     sw.rotation.z = angle;
     sw.position.set(
       (road.x1 + road.x2) / 2 + offsetX * side,
-      0.025,
+      Y_SIDEWALK,
       (road.z1 + road.z2) / 2 + offsetZ * side
     );
     sw.receiveShadow = true;
@@ -1042,7 +1057,7 @@ function createCrosswalk(x, z, angle, roadWidth) {
   const count = 5;
   const stripeW = 0.18, stripeL = roadWidth;
   const spacing = stripeW * 2.0; // band = gap for readable alternation
-  const mat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.6 });
+  const mat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   for (let i = 0; i < count; i++) {
     const geo = new THREE.PlaneGeometry(stripeW, stripeL);
     const stripe = new THREE.Mesh(geo, mat);
@@ -1050,7 +1065,7 @@ function createCrosswalk(x, z, angle, roadWidth) {
     stripe.rotation.z = angle;
     stripe.position.set(
       x + (i - (count - 1) / 2) * spacing * Math.cos(angle),
-      0.028,
+      Y_CROSSWALK,
       z - (i - (count - 1) / 2) * spacing * Math.sin(angle)
     );
     stripe.receiveShadow = true;
@@ -1384,7 +1399,8 @@ function createBeachVendor(x, z) {
   });
   const fireHalo = new THREE.Mesh(fireHaloGeo, fireHaloMat);
   fireHalo.rotation.x = -Math.PI / 2;
-  fireHalo.position.set(x, 0.028, z);
+  fireHalo.position.set(x, Y_FIRE_HALO, z);
+  fireHalo.renderOrder = 2;
   fireHalo.visible = false;
   cityGroup.add(fireHalo);
 
@@ -1600,6 +1616,7 @@ function generateMap(map) {
     const groundMat = new THREE.MeshStandardMaterial({ color: map.groundColor, roughness: 0.85 });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
+    ground.position.y = Y_GROUND;
     ground.receiveShadow = true;
     mapGroup.add(ground);
 
@@ -1608,16 +1625,16 @@ function generateMap(map) {
     const beachMat = new THREE.MeshStandardMaterial({ color: 0xe8d5a8, roughness: 0.9 });
     const beach = new THREE.Mesh(beachGeo, beachMat);
     beach.rotation.x = -Math.PI / 2;
-    beach.position.y = 0.02;
+    beach.position.y = Y_BEACH;
     beach.receiveShadow = true;
     mapGroup.add(beach);
 
     // Foam ring
     const foamGeo = new THREE.RingGeometry(map.beachOuterR - 0.3, map.beachOuterR + 0.2, 64);
-    const foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+    const foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false });
     const foamRing = new THREE.Mesh(foamGeo, foamMat);
     foamRing.rotation.x = -Math.PI / 2;
-    foamRing.position.y = 0.05;
+    foamRing.position.y = Y_FOAM;
     foamRing.name = 'foamRing';
     mapGroup.add(foamRing);
 
@@ -1654,7 +1671,7 @@ function generateMap(map) {
     oceanMaterials.push(farOceanMat);
     const farOcean = new THREE.Mesh(farOceanGeo, farOceanMat);
     farOcean.rotation.x = -Math.PI / 2;
-    farOcean.position.set(0, 0.01, 0);
+    farOcean.position.set(0, Y_BELOW_ALL, 0);
     mapGroup.add(farOcean);
 
   } else {
@@ -1663,6 +1680,7 @@ function generateMap(map) {
     const groundMat = new THREE.MeshStandardMaterial({ color: map.groundColor, roughness: 0.85 });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
+    ground.position.y = Y_GROUND;
     ground.receiveShadow = true;
     mapGroup.add(ground);
 
@@ -1688,16 +1706,16 @@ function generateMap(map) {
     const beachMat = new THREE.MeshStandardMaterial({ color: 0xe8d5a8, roughness: 0.9 });
     const beach = new THREE.Mesh(beachGeo, beachMat);
     beach.rotation.x = -Math.PI / 2;
-    beach.position.set(0, 0.02, map.beachZ);
+    beach.position.set(0, Y_BEACH, map.beachZ);
     beach.receiveShadow = true;
     mapGroup.add(beach);
 
     // Foam line (at the beach/ocean boundary)
     const foamGeo = new THREE.PlaneGeometry(map.beachWidth, 0.5);
-    const foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
+    const foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false });
     const foamLine = new THREE.Mesh(foamGeo, foamMat);
     foamLine.rotation.x = -Math.PI / 2;
-    foamLine.position.set(0, 0.05, beachSouthEdge);
+    foamLine.position.set(0, Y_FOAM, beachSouthEdge);
     foamLine.name = 'foamLine';
     mapGroup.add(foamLine);
 
@@ -1709,14 +1727,25 @@ function generateMap(map) {
     });
     const farOcean2 = new THREE.Mesh(farOceanGeo2, farOceanMat2);
     farOcean2.rotation.x = -Math.PI / 2;
-    farOcean2.position.set(0, 0.03, beachSouthEdge - 100);
+    farOcean2.position.set(0, Y_BELOW_ALL, beachSouthEdge - 100);
     mapGroup.add(farOcean2);
   }
 
   // ── Grid helper ─────────────────────────────────────────
   const grid = new THREE.GridHelper(map.terrainHalf * 2, map.terrainHalf, 0x3d6b2e, 0x4a7a35);
   grid.isGridHelper = true;
-  grid.position.y = 0.01;
+  grid.position.y = Y_GRID;
+  // Grid is a decal overlay — must not write depth and uses polygonOffset
+  // so it always renders on top of roads/crosswalks without fighting them.
+  grid.traverse(c => {
+    if (c.isLine) {
+      c.material.depthWrite = false;
+      c.material.polygonOffset = true;
+      c.material.polygonOffsetFactor = -1;
+      c.material.polygonOffsetUnits = -1;
+    }
+  });
+  grid.renderOrder = 1;
   mapGroup.add(grid);
 
   // ── Roads ───────────────────────────────────────────────
@@ -2769,7 +2798,8 @@ function createStreetLamp(x, z) {
   });
   const halo = new THREE.Mesh(haloGeo, haloMat);
   halo.rotation.x = -Math.PI / 2;
-  halo.position.y = 0.025;
+  halo.position.y = Y_LAMP_HALO;
+  halo.renderOrder = 2;
   group.add(halo);
 
   group.position.set(x, 0, z);

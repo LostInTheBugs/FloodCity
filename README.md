@@ -61,15 +61,47 @@ python3 -m http.server 8080
 
 Déployé sur https://games.cloudfr.net/floodcity/
 
-## 🏷️ Versioning
+## ⚠️ Cohérence au déploiement
 
-Format : `ANNÉE.MOIS.NNN` (ex: `2026.07.002`).
+Le fichier `version.json` (servi à côté de `index.html`) doit être déployé **en même temps** que `index.html` et porter la même version que `GAME_VERSION`. Si les deux divergent, le bandeau de mise à jour s'affichera en boucle.
 
-- **NNN** (compteur 3 chiffres) s'incrémente à chaque release déployée
-- Remise à `001` au changement de mois (`ANNÉE.MOIS` suit la date de release)
-- Le compteur ne se réinitialise jamais en cours de mois
+Avant chaque déploiement, vérifier :
+```bash
+# Affiche les deux versions côte à côte
+grep "const GAME_VERSION" index.html && cat version.json
+```
 
-La source de vérité unique est la constante `GAME_VERSION` dans `index.html` (en-tête du bloc `<script type="module">`). La balise `<meta name="version">` et les affichages HUD sont synchronisés automatiquement depuis cette constante.
+Les champs `version` (dans `version.json`) et `GAME_VERSION` (dans `index.html`) doivent être identiques.
+
+## 📋 Notes de version
+
+### 2026.07.005
+- Correction d'un bug d'affichage : un immeuble détruit par une vague ne restait plus visible à l'écran
+- Détection automatique de nouvelle version : un bandeau discret propose de recharger quand une mise à jour est disponible, sans jamais interrompre la partie
+- Bandeau de mise à jour non bloquant — le jeu continue pendant que la notification est affichée
+
+### 2026.07.004
+- Échelle du décor unifiée — piétons, arbres, parasols, transats et baigneurs ramenés à des proportions réalistes
+- Plage élargie avec davantage de mobilier, horizon marin sans bord visible sur les deux cartes
+- Zone de frappe des vagues reculée, laissant plus de temps pour construire
+
+### 2026.07.003
+- Trait de côte corrigé — le mobilier de plage ne se retrouve plus dans l'eau
+- Feux tricolores, parasols et transats redimensionnés à des proportions réalistes
+- Passages piétons alignés sur la largeur réelle de la chaussée
+
+### 2026.07.002
+- Écran d'accueil avec choix entre deux cartes : Littoral (ville en retrait de la plage) et Île (vagues alternant nord-sud)
+- Numéro de version affiché dans le menu et le HUD
+
+### 2026.07.001
+- Vagues segmentées en tronçons indépendants, décentrées, avec difficulté progressive
+- Trois tiers de murs (sac de sable, renforcé, béton) et tranchées qui ralentissent les vagues
+- Ghost de prévisualisation, score progressif, économie à régénération passive
+- Ville générée avec routes, trottoirs, voitures, piétons, plage et mobilier de plage
+- Corrections : écran noir au démarrage, fuite mémoire au restart
+
+> **Rappel :** le fichier `version.json` doit être déployé avec `index.html` et porter la même version que `GAME_VERSION`.
 
 ## 📝 Repo
 

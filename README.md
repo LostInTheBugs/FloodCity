@@ -75,6 +75,15 @@ Les champs `version` (dans `version.json`) et `GAME_VERSION` (dans `index.html`)
 
 ## 📋 Notes de version
 
+### 2026.07.008
+- Les habitants se réfugient désormais dans les immeubles à l'approche d'une vague et en ressortent une fois le danger passé — ceux dont l'immeuble est détruit ne reviennent pas
+- Seuls les habitants réellement menacés par une vague paniquent et courent se mettre à l'abri ; le reste de la ville continue sa vie normalement
+- L'intervalle entre les vagues est allongé, laissant davantage de temps pour reconstruire et observer la ville respirer entre deux alertes
+- Un mode jour/nuit activable avec la touche N : nuit claire de lune avec fenêtres allumées, lampadaires, phares et feux de camp sur la plage
+- Le mobilier urbain s'enrichit : parking en front de mer, lampadaires le long des rues et feux tricolores de part et d'autre des carrefours
+- Le réseau de rues est réorganisé en îlots plus grands, rendant les déplacements plus fluides et la ville plus lisible
+- La forme des vagues est retravaillée — moins anguleuse, plus organique
+
 ### 2026.07.007
 - La difficulté progresse sans plafond et les seuils de défaite s'adaptent à la taille de chaque carte — plus besoin de redémarrer après 5 vagues
 - Les meilleurs scores sont conservés par carte et affichés au menu, pour suivre sa progression d'une session à l'autre

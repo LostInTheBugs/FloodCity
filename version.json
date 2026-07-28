@@ -1,5 +1,5 @@
 {
-  "version": "2026.07.007",
+  "version": "2026.07.008",
   "date": "2026-07-28",
-  "notes": "La difficult\u00e9 s\u2019adapte d\u00e9sormais \u00e0 la taille de chaque carte sans plafond, les meilleurs scores sont sauvegard\u00e9s par carte, la population fuit les vagues et reprend vie apr\u00e8s le danger, la plage s\u2019anime de baigneurs et marchands, une boussole indique le nord et le front de la vague, et le d\u00e9cor \u00e0 l\u2019\u00e9chelle \u00e9vite d\u00e9sormais tout b\u00e2timent sur la chauss\u00e9e"
+  "notes": "Les habitants se r\u00e9fugient dans les immeubles \u00e0 l\u2019approche d\u2019une vague, un mode jour/nuit transforme l\u2019ambiance de la ville, le mobilier urbain s\u2019enrichit de lampadaires et feux tricolores, les rues sont r\u00e9organis\u00e9es en \u00eelots plus grands, et la forme des vagues est retravaill\u00e9e pour un rendu plus naturel"
 }

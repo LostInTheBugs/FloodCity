@@ -348,6 +348,7 @@
   ⌨️ <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> Tier &nbsp;|&nbsp;
   <kbd>T</kbd> Tranchée &nbsp;|&nbsp;
   <kbd>R</kbd> Recommencer &nbsp;|&nbsp;
+  <kbd>N</kbd> Jour/Nuit &nbsp;|&nbsp;
   <kbd>M</kbd> Menu
 </div>
 
@@ -387,7 +388,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ─── Version ──────────────────────────────────────────────────
-const GAME_VERSION = "2026.07.007";
+const GAME_VERSION = "2026.07.008";
 document.querySelector("meta[name=version]").setAttribute("content", GAME_VERSION);
 document.getElementById('home-version').textContent = 'v' + GAME_VERSION;
 document.getElementById('hud-version').textContent = 'v' + GAME_VERSION;
@@ -734,9 +735,18 @@ let intersections = [];
 let beachPeople = []; // { group, type: 'swimmer'|'walker'|'ballplayer', ... }
 let ballGroup = null; // beach ball mesh (the one that gets played with)
 let oceanPlanes = []; // animated ocean meshes
+let oceanMaterials = []; // tracked for night emissive
+let waveFoamMaterials = []; // wave crest foam for night emissive
 let beachVendors = []; // { group, cartGroup, x, z, ... }
 let alertPanicTime = 0;   // performance.now() when alert was triggered
 let lastWaveClearTime = 0; // time when all waves left the map
+
+// ─── Night mode state ──────────────────────────────────────
+let isNight = false;
+let nightBlend = 0;   // 0=day, 1=night (lerped)
+let nightTarget = 0;
+let streetLamps = [];  // { group, lampEmissive, haloPlane, x, z }
+let nightBuildingData = []; // per-building: { emissiveMap, bodyMat, emissiveIntensity }
 
 const BUILDING_COLORS = [
   0xe8c9a0, 0xdbb88c, 0xd4a574, 0xc4956a, 0xf0dcc0,
@@ -746,7 +756,8 @@ const BUILDING_COLORS = [
 ];
 
 // ─── Window texture generator ───────────────────────────────
-function createWindowTexture(baseColor) {
+// Returns { map, emissiveMap } — emissiveMap has only lit windows
+function createWindowTexture(baseColor, nightOccupancy = null) {
   const size = 128;
   const canvas = document.createElement('canvas');
   canvas.width = size; canvas.height = size;
@@ -758,34 +769,54 @@ function createWindowTexture(baseColor) {
   ctx.fillStyle = `rgb(${r},${g},${b})`;
   ctx.fillRect(0, 0, size, size);
 
+  // Emission canvas — black base, only lit windows glow
+  const emCanvas = document.createElement('canvas');
+  emCanvas.width = size; emCanvas.height = size;
+  const emCtx = emCanvas.getContext('2d');
+  emCtx.fillStyle = 'rgb(0,0,0)';
+  emCtx.fillRect(0, 0, size, size);
+
   const cols = 4, rows = 6;
   const marginX = 8, marginY = 6;
   const cellW = (size - marginX * 2) / cols;
   const cellH = (size - marginY * 2) / rows;
 
+  // Per-building occupancy: some buildings 80% lit, some only 15%
+  const occ = nightOccupancy !== null ? nightOccupancy : 0.3 + Math.random() * 0.5;
+
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
-      const wx = marginX + col * cellW + cellW * 0.15;
-      const wy = marginY + row * cellH + cellH * 0.15;
-      const ww = cellW * 0.7;
-      const wh = cellH * 0.7;
+      const wx = marginX + col * cellW + cellW * 0.10;
+      const wy = marginY + row * cellH + cellH * 0.10;
+      const ww = cellW * 0.80;
+      const wh = cellH * 0.80;
 
-      const lit = Math.random() > 0.3;
+      const lit = Math.random() > (1 - occ);
       if (lit) {
         const warm = Math.random() > 0.4;
         ctx.fillStyle = warm
           ? `rgba(255,220,150,${0.5 + Math.random() * 0.4})`
           : `rgba(180,210,255,${0.3 + Math.random() * 0.3})`;
+        // Emission: warm window glow — full alpha for max brightness
+        emCtx.fillStyle = warm
+          ? `rgba(255,220,140,1)`
+          : `rgba(180,220,255,1)`;
       } else {
         ctx.fillStyle = 'rgba(30,30,50,0.5)';
+        emCtx.fillStyle = 'rgba(0,0,0,0)';
       }
       ctx.fillRect(wx, wy, ww, wh);
+      emCtx.fillRect(wx, wy, ww, wh);
       ctx.strokeStyle = 'rgba(0,0,0,0.25)';
       ctx.lineWidth = 1;
       ctx.strokeRect(wx, wy, ww, wh);
     }
   }
-  return new THREE.CanvasTexture(canvas);
+  const map = new THREE.CanvasTexture(canvas);
+  const emissiveMap = new THREE.CanvasTexture(emCanvas);
+  emissiveMap.wrapS = THREE.RepeatWrapping;
+  emissiveMap.wrapT = THREE.RepeatWrapping;
+  return { map, emissiveMap };
 }
 
 // ─── Building creation ──────────────────────────────────────
@@ -793,19 +824,31 @@ function createBuilding(x, z, w, d, h, color) {
   const group = new THREE.Group();
 
   const bodyGeo = new THREE.BoxGeometry(w, h, d);
-  const texture = createWindowTexture(color);
+  const nightOcc = 0.10 + Math.random() * 0.80; // 10%-90% lit — varied city feel
+  const { map: texture, emissiveMap } = createWindowTexture(color, nightOcc);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(Math.max(1, Math.floor(w)), Math.max(1, Math.floor(h / 2)));
+  emissiveMap.wrapS = THREE.RepeatWrapping;
+  emissiveMap.wrapT = THREE.RepeatWrapping;
+  emissiveMap.repeat.set(Math.max(1, Math.floor(w)), Math.max(1, Math.floor(h / 2)));
   const bodyMat = new THREE.MeshStandardMaterial({
     map: texture, roughness: 0.6, metalness: 0.05,
-    color: 0xffffff
+    color: 0xffffff,
+    emissive: 0x000000, emissiveIntensity: 0,
+    emissiveMap: emissiveMap
   });
   const body = new THREE.Mesh(bodyGeo, bodyMat);
   body.position.y = h / 2;
   body.castShadow = true;
   body.receiveShadow = true;
   group.add(body);
+
+  // Store night window data for later animation/update
+  nightBuildingData.push({
+    bodyMat, emissiveMap, nightOcc,
+    animPhase: Math.random() * Math.PI * 2
+  });
 
   // Roof
   const roofH = 0.15 + h * 0.05;
@@ -922,6 +965,38 @@ function createCar(roadIdx) {
   group.position.set(x, 0.06, z);
   group.rotation.y = angle;
 
+  // ── Headlights (small emissive squares at the front) ──
+  const hlGeo = new THREE.PlaneGeometry(0.06, 0.06);
+  const hlMat = new THREE.MeshStandardMaterial({
+    color: 0xffffcc, roughness: 0.1, metalness: 0.1,
+    emissive: 0xffffcc, emissiveIntensity: 0,
+    side: THREE.DoubleSide
+  });
+  const hlLeft = new THREE.Mesh(hlGeo, hlMat);
+  hlLeft.position.set(-0.1, 0.22, 0.37); // front of car
+  hlLeft.name = 'headlight';
+  group.add(hlLeft);
+  const hlRight = new THREE.Mesh(hlGeo, hlMat.clone());
+  hlRight.position.set(0.1, 0.22, 0.37);
+  hlRight.name = 'headlight';
+  group.add(hlRight);
+
+  // ── Taillights (small emissive squares at the back) ──
+  const tlGeo = new THREE.PlaneGeometry(0.05, 0.04);
+  const tlMat = new THREE.MeshStandardMaterial({
+    color: 0xff2222, roughness: 0.1, metalness: 0.1,
+    emissive: 0xff2222, emissiveIntensity: 0,
+    side: THREE.DoubleSide
+  });
+  const tlLeft = new THREE.Mesh(tlGeo, tlMat);
+  tlLeft.position.set(-0.1, 0.22, -0.37);
+  tlLeft.name = 'taillight';
+  group.add(tlLeft);
+  const tlRight = new THREE.Mesh(tlGeo, tlMat.clone());
+  tlRight.position.set(0.1, 0.22, -0.37);
+  tlRight.name = 'taillight';
+  group.add(tlRight);
+
   cityGroup.add(group);
 
   cars.push({
@@ -934,6 +1009,8 @@ function createCar(roadIdx) {
     homeRoadIdx: roadIdx, homeT: t0,
     basePanicSpeed: 0,
     panicDelay: 0.1 + Math.random() * 0.5, // staggered panic onset
+    headlightLeft: hlLeft, headlightRight: hlRight,
+    taillightLeft: tlLeft, taillightRight: tlRight,
   });
 }
 
@@ -1286,6 +1363,31 @@ function createBeachVendor(x, z) {
   // UNIFIED SCALE — same as vendor
   cartGroup.scale.setScalar(VENDOR_SCALE);
 
+  // ── Lantern / fire glow on cart (visible at night) ──
+  // Sphere glow at cart level (inside cartGroup, scales with vendor)
+  const fireGlowGeo = new THREE.SphereGeometry(0.18, 8, 8);
+  const fireGlowMat = new THREE.MeshStandardMaterial({
+    color: 0xff7722, roughness: 0.1, metalness: 0,
+    emissive: 0xff7722, emissiveIntensity: 0,
+    transparent: true, opacity: 0.9
+  });
+  const fireGlow = new THREE.Mesh(fireGlowGeo, fireGlowMat);
+  fireGlow.position.set(0, 0.60, 0);
+  fireGlow.visible = false;
+  cartGroup.add(fireGlow);
+
+  // Ground-level glow disc in WORLD SPACE (not cartGroup, so it stays visible)
+  const fireHaloGeo = new THREE.PlaneGeometry(2.5, 3.0);
+  const fireHaloMat = new THREE.MeshBasicMaterial({
+    color: 0xff9944, transparent: true, opacity: 0,
+    side: THREE.DoubleSide, depthWrite: false
+  });
+  const fireHalo = new THREE.Mesh(fireHaloGeo, fireHaloMat);
+  fireHalo.rotation.x = -Math.PI / 2;
+  fireHalo.position.set(x, 0.028, z);
+  fireHalo.visible = false;
+  cityGroup.add(fireHalo);
+
   // Position: cart at anchor, vendor behind it (holding the handle)
   const vendorOffsetX = 0.05;
   const vendorOffsetZ = 0.35; // behind cart
@@ -1309,6 +1411,8 @@ function createBeachVendor(x, z) {
     wanderSpeed: 0.15 + Math.random() * 0.3,
     pauseUntil: 0,
     idleOffset: 0,
+    fireGlow,
+    fireHalo,
   };
 }
 
@@ -1473,6 +1577,8 @@ function generateMap(map) {
   mapGroup.add(oceanGroup);
 
   oceanPlanes = [];
+  oceanMaterials = [];
+  waveFoamMaterials = [];
   cars = [];
   roadPaths = [];
   pedestrians = [];
@@ -1545,6 +1651,7 @@ function generateMap(map) {
       color: 0x1565a8, roughness: 0.2, metalness: 0.7,
       transparent: true, opacity: 0.88
     });
+    oceanMaterials.push(farOceanMat);
     const farOcean = new THREE.Mesh(farOceanGeo, farOceanMat);
     farOcean.rotation.x = -Math.PI / 2;
     farOcean.position.set(0, 0.01, 0);
@@ -1567,6 +1674,7 @@ function generateMap(map) {
       color: 0x1565a8, roughness: 0.2, metalness: 0.7,
       transparent: true, opacity: 0.88
     });
+    oceanMaterials.push(oceanMat);
     const ocean = new THREE.Mesh(oceanGeo, oceanMat);
     ocean.rotation.x = -Math.PI / 2;
     ocean.position.set(0, 0.08, nearOceanZ);
@@ -1607,6 +1715,7 @@ function generateMap(map) {
 
   // ── Grid helper ─────────────────────────────────────────
   const grid = new THREE.GridHelper(map.terrainHalf * 2, map.terrainHalf, 0x3d6b2e, 0x4a7a35);
+  grid.isGridHelper = true;
   grid.position.y = 0.01;
   mapGroup.add(grid);
 
@@ -1875,6 +1984,27 @@ function generateMap(map) {
     }
   }
 
+  // ── Streetlamps ──────────────────────────────────────────
+  // Place along roads at regular intervals
+  streetLamps = [];
+  for (const road of roadPaths) {
+    const dx = road.x2 - road.x1;
+    const dz = road.z2 - road.z1;
+    const len = Math.sqrt(dx * dx + dz * dz);
+    const count = Math.floor(len / 2.5); // one every 2.5 units
+    for (let i = 0; i < count; i++) {
+      const t = (i + 0.5) / count;
+      const sx = road.x1 + dx * t;
+      const sz = road.z1 + dz * t;
+      // Offset onto sidewalk (alternate sides)
+      const side = i % 2 === 0 ? 1 : -1;
+      const angle = Math.atan2(dx, dz);
+      const offX = Math.cos(angle) * 1.2 * side;
+      const offZ = -Math.sin(angle) * 1.2 * side;
+      createStreetLamp(sx + offX, sz + offZ);
+    }
+  }
+
   // ── Reset game state ────────────────────────────────────
   totalBuildingsInitial = buildings.length;
   // Compute proportional thresholds (map can override ratios, defaults: defeat 15%, alert 25%)
@@ -1965,6 +2095,82 @@ function isInBuildZoneForPlacement(px, pz) {
   return true;
 }
 
+// ─── Wave mesh generators ─────────────────────────────────
+// Smooth noise: sum-of-sines, deterministic, continuous across x
+function waveNoise(x, time) {
+  return Math.sin(x * 0.7 + time * 0.9) * 0.35
+       + Math.sin(x * 1.3 + time * 1.4 + 1.5) * 0.25
+       + Math.sin(x * 2.1 - time * 1.1) * 0.15
+       + Math.cos(x * 3.3 + time * 1.8) * 0.1;
+}
+
+// 2D cross-section profile (ZY plane, unit height)
+function waveProfile(depth) {
+  const dz = depth / 2;
+  return [
+    -dz, 0, -dz + 0.05, 0.12, -dz + 0.3, 0.45,
+    -dz + 0.7, 0.8, -dz + 0.85, 0.93, -0.05, 1.0,
+    0.12, 0.96, 0.06, 0.88, -0.1, 0.65,
+    -0.02, 0.35, 0.3, 0.1, dz - 0.05, 0.02, dz, 0
+  ];
+}
+
+function createWaveSegmentGeometry(segWidth, waveH, depth) {
+  const slices = 6;
+  const profile = waveProfile(depth);
+  const ptsPerSlice = profile.length / 2;
+  const vertCount = slices * ptsPerSlice;
+  const positions = new Float32Array(vertCount * 3);
+  for (let s = 0; s < slices; s++) {
+    const x = -segWidth / 2 + (s / (slices - 1)) * segWidth;
+    for (let p = 0; p < ptsPerSlice; p++) {
+      const z = profile[p * 2], y = profile[p * 2 + 1] * waveH;
+      const idx = (s * ptsPerSlice + p) * 3;
+      positions[idx] = x; positions[idx + 1] = y; positions[idx + 2] = z;
+    }
+  }
+  const indices = [];
+  for (let s = 0; s < slices - 1; s++) {
+    const bA = s * ptsPerSlice, bB = (s + 1) * ptsPerSlice;
+    for (let p = 0; p < ptsPerSlice - 1; p++) {
+      const a = bA + p, b = bA + p + 1, c = bB + p, d = bB + p + 1;
+      indices.push(a, c, b); indices.push(b, c, d);
+    }
+  }
+  const cap0 = 0;
+  for (let p = 1; p < ptsPerSlice - 1; p++) indices.push(cap0 + p, cap0, cap0 + p + 1);
+  const cap1 = (slices - 1) * ptsPerSlice;
+  for (let p = 1; p < ptsPerSlice - 1; p++) indices.push(cap1 + p + 1, cap1, cap1 + p);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return { geometry: geo, vertexCount: vertCount };
+}
+
+function createWaveFoamGeometry(segWidth, waveH, depth) {
+  const slices = 6, foamWidth = 0.22;
+  const crestZ = -0.05 * (depth / 2.2), crestY = waveH;
+  const vertCount = slices * 2;
+  const positions = new Float32Array(vertCount * 3);
+  for (let s = 0; s < slices; s++) {
+    const x = -segWidth / 2 + (s / (slices - 1)) * segWidth;
+    const i0 = s * 2 * 3, i1 = (s * 2 + 1) * 3;
+    positions[i0] = x; positions[i0 + 1] = crestY + 0.03; positions[i0 + 2] = crestZ - 0.04;
+    positions[i1] = x; positions[i1 + 1] = crestY - 0.02; positions[i1 + 2] = crestZ + foamWidth;
+  }
+  const indices = [];
+  for (let s = 0; s < slices - 1; s++) {
+    const a = s * 2, b = s * 2 + 1, c = (s + 1) * 2, d = (s + 1) * 2 + 1;
+    indices.push(a, c, b); indices.push(b, c, d);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 // ─── Wave system ────────────────────────────────────────────
 function spawnWave() {
   if (gameOver || !currentMap) return;
@@ -1992,21 +2198,39 @@ function spawnWave() {
   const segMeshes = [];
 
   const spawnZ = map.waveSpawnZ[dir];
+  const depth = 2.2;
+  const segWidth = waveWidth / n;
+  const segGeoShared = null; // each segment gets its own geometry for height variation
 
   for (let i = 0; i < n; i++) {
-    const sx = waveX - waveWidth / 2 + (i + 0.5) * (waveWidth / n);
+    const sx = waveX - waveWidth / 2 + (i + 0.5) * segWidth;
     segments.push({ x: sx, hp: segHp, maxHp: segHp, alive: true });
-    const segGeo = new THREE.BoxGeometry(waveWidth / n, waveH, 2.2);
-    const segMat = new THREE.MeshStandardMaterial({
+
+    // Wave body — custom extruded cross-section profile
+    const { geometry: bodyGeo } = createWaveSegmentGeometry(segWidth, waveH, depth);
+    const bodyMat = new THREE.MeshStandardMaterial({
       color: 0x3377bb, roughness: 0.2, metalness: 0.4,
       transparent: true, opacity: 0.7
     });
-    const segMesh = new THREE.Mesh(segGeo, segMat);
-    segMesh.position.set(sx, waveH / 2, spawnZ);
-    segMesh.castShadow = true;
-    segMesh.receiveShadow = true;
-    scene.add(segMesh);
-    segMeshes.push(segMesh);
+    const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+    bodyMesh.position.set(sx, 0, spawnZ);
+    bodyMesh.castShadow = true;
+    bodyMesh.receiveShadow = true;
+    scene.add(bodyMesh);
+
+    // Foam strip along crest
+    const foamGeo = createWaveFoamGeometry(segWidth, waveH, depth);
+    const foamMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff, roughness: 0.15, metalness: 0.0,
+      emissive: new THREE.Color(0xccddff), emissiveIntensity: 0.0,
+      transparent: true, opacity: 0.75, depthWrite: false
+    });
+    waveFoamMaterials.push(foamMat);
+    const foamMesh = new THREE.Mesh(foamGeo, foamMat);
+    foamMesh.position.copy(bodyMesh.position);
+    scene.add(foamMesh);
+
+    segMeshes.push({ body: bodyMesh, foam: foamMesh });
   }
 
   waves.push({
@@ -2106,13 +2330,14 @@ function updateWaves(dt) {
       for (let si = 0; si < wave.segments.length; si++) {
         const seg = wave.segments[si];
         const sm = wave.segMeshes[si];
-        sm.position.z = wave.z;
-        if (!seg.alive) { sm.visible = false; continue; }
-        sm.visible = true;
-        sm.position.y = wave.height / 2;
+        sm.body.position.z = wave.z;
+        sm.foam.position.z = wave.z;
+        if (!seg.alive) { sm.body.visible = false; sm.foam.visible = false; continue; }
+        sm.body.visible = true;
+        sm.foam.visible = true;
         const segHp = seg.hp / seg.maxHp;
-        sm.material.opacity = 0.2 + segHp * 0.55;
-        sm.scale.y = 0.3 + segHp * 0.7;
+        sm.body.material.opacity = 0.2 + segHp * 0.55;
+        sm.foam.material.opacity = segHp * 0.75;
       }
 
       // Trench vs segments
@@ -2218,7 +2443,7 @@ function updateWaves(dt) {
         score += 20 + waveNumber * 3 + diffBonus * 2;
         resources = Math.min(RESOURCE_CAP, resources + 25 + waveNumber * 3 + diffBonus);
       }
-      wave.segMeshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+      wave.segMeshes.forEach(m => { scene.remove(m.body); m.body.geometry.dispose(); m.body.material.dispose(); scene.remove(m.foam); m.foam.geometry.dispose(); m.foam.material.dispose(); });
       waves.splice(wi, 1);
     }
   }
@@ -2390,6 +2615,169 @@ renderer.domElement.addEventListener('click', (e) => {
     updateGhost(snapped);
   }
 });
+
+// ─── Night lighting update ──────────────────────────────────
+// Lerps ALL scene lighting between day and full-moon night.
+// Called every frame while nightBlend != nightTarget.
+// Moon is cool-blue directional light casting soft shadows.
+// Ambient stays high enough that unlit facades keep visible colour.
+function updateNightLighting(t) {
+  // t: 0 = full day, 1 = full night
+
+  // Ambient: day=0x8899cc@1.2 → night=0x334477@0.78 (moonlit night, not cave)
+  ambient.intensity = 1.2 + t * (0.78 - 1.2);
+  ambient.color.setRGB(
+    0.533 + t * (0.20 - 0.533),
+    0.600 + t * (0.267 - 0.600),
+    0.800 + t * (0.467 - 0.800)
+  );
+
+  // Sun → Moon: colour shifts to cool blue, intensity ~28% of day (bright full moon)
+  sun.intensity = 3.5 + t * (1.0 - 3.5);
+  sun.color.setRGB(
+    1.0 + t * (0.55 - 1.0),
+    0.933 + t * (0.65 - 0.933),
+    0.867 + t * (0.90 - 0.867)
+  );
+  // Moon position: lower angle, opposite side
+  sun.position.set(
+    30 + t * (-20 - 30),
+    40 + t * (28 - 40),
+    10 + t * (-5 - 10)
+  );
+
+  // Hemisphere: day=0x87ceeb/0x3d5a3d@0.6 → night=0x1a2a44/0x0a0a18@0.30
+  hemi.intensity = 0.6 + t * (0.30 - 0.6);
+  hemi.color.setRGB(
+    0.529 + t * (0.102 - 0.529),
+    0.808 + t * (0.165 - 0.808),
+    0.922 + t * (0.267 - 0.922)
+  );
+  hemi.groundColor.setRGB(
+    0.239 + t * (0.039 - 0.239),
+    0.365 + t * (0.039 - 0.365),
+    0.239 + t * (0.094 - 0.239)
+  );
+
+  // Exposure: day=1.1 → night=0.72 (preserve some dynamic range)
+  renderer.toneMappingExposure = 1.1 + t * (0.72 - 1.1);
+
+  // Scene background & fog — fade to deep night blue
+  const dayBg = new THREE.Color(0x87ceeb);
+  const nightBg = new THREE.Color(0x0a1020);
+  scene.background = dayBg.clone().lerp(nightBg, t);
+  if (scene.fog) {
+    const dayFog = new THREE.Color(0x87ceeb);
+    const nightFog = new THREE.Color(0x0a1020);
+    scene.fog.color = dayFog.clone().lerp(nightFog, t);
+  }
+
+  // ── Building window emission ──
+  for (const bd of nightBuildingData) {
+    bd.bodyMat.emissiveIntensity = t * 2.0;
+    bd.bodyMat.emissive.setRGB(1.0 * t, 0.75 * t, 0.25 * t);
+  }
+
+  // ── Ocean emissive (moon reflection on water) ──
+  for (const mat of oceanMaterials) {
+    mat.emissive = new THREE.Color(0x000000).lerp(new THREE.Color(0x224466), t);
+    mat.emissiveIntensity = t * 0.9;
+  }
+  for (const mat of waveFoamMaterials) {
+    mat.emissive = new THREE.Color(0x000000).lerp(new THREE.Color(0x446688), t);
+    mat.emissiveIntensity = t * 0.7;
+  }
+
+  // ── Streetlamps: emissive heads + ground halos ──
+  for (const sl of streetLamps) {
+    sl.lampEmissive.material.color.setRGB(
+      1.0, 0.85 + t * (-0.85 + 0.60), 0.45 + t * (-0.45 + 0.25)
+    );
+    sl.lampEmissive.material.emissiveIntensity = t * 1.5;
+    if (sl.haloPlane) {
+      sl.haloPlane.material.opacity = t * 0.70;
+    }
+  }
+
+  // ── Grid dimming ──
+  const grid = mapGroup.children.find(c => c.isGridHelper);
+  if (grid && grid.material) {
+    const gm = grid.material;
+    gm.opacity = 0.6 + t * (0.04 - 0.6);
+    gm.color.setRGB(
+      0.55 * (1 - t) + 0.015 * t,
+      0.55 * (1 - t) + 0.020 * t,
+      0.50 * (1 - t) + 0.010 * t
+    );
+  }
+
+  // ── Car headlights ──
+  for (const car of cars) {
+    if (!car.headlightLeft) continue;
+    car.headlightLeft.material.emissiveIntensity = t * 0.7;
+    car.headlightRight.material.emissiveIntensity = t * 0.7;
+    car.taillightLeft.material.emissiveIntensity = t * 0.5;
+    car.taillightRight.material.emissiveIntensity = t * 0.5;
+  }
+
+  // ── Beach campfires ──
+  for (const bv of beachVendors) {
+    if (!bv.fireGlow) continue;
+    bv.fireGlow.material.emissiveIntensity = t * 1.2;
+    bv.fireGlow.visible = t > 0.01;
+    if (bv.fireHalo) {
+      bv.fireHalo.material.opacity = t * 0.32;
+      bv.fireHalo.visible = t > 0.01;
+    }
+  }
+}
+
+// ─── Street lamp creation ───────────────────────────────────
+function createStreetLamp(x, z) {
+  const group = new THREE.Group();
+  // Pole: 2.2 units tall (~14m at 6.4m/unit)
+  const poleGeo = new THREE.CylinderGeometry(0.04, 0.06, 2.2, 6);
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.4, metalness: 0.7 });
+  const pole = new THREE.Mesh(poleGeo, poleMat);
+  pole.position.y = 1.1;
+  pole.castShadow = true;
+  group.add(pole);
+
+  // Arm
+  const armGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.6, 6);
+  const arm = new THREE.Mesh(armGeo, poleMat);
+  arm.rotation.z = Math.PI / 2;
+  arm.position.set(0.3, 2.1, 0);
+  group.add(arm);
+
+  // Lamp housing (emissive)
+  const housingGeo = new THREE.BoxGeometry(0.1, 0.14, 0.2);
+  const housingMat = new THREE.MeshStandardMaterial({
+    color: 0xffdd88, roughness: 0.2, metalness: 0.1,
+    emissive: 0xffdd88, emissiveIntensity: 0
+  });
+  const housing = new THREE.Mesh(housingGeo, housingMat);
+  housing.position.set(0.6, 1.98, 0);
+  group.add(housing);
+
+  // Ground halo — flat additive plane casting a warm puddle on the ground
+  const haloGeo = new THREE.PlaneGeometry(3.2, 4.0);
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: 0xffaa44, transparent: true, opacity: 0,
+    side: THREE.DoubleSide, depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  const halo = new THREE.Mesh(haloGeo, haloMat);
+  halo.rotation.x = -Math.PI / 2;
+  halo.position.y = 0.025;
+  group.add(halo);
+
+  group.position.set(x, 0, z);
+  cityGroup.add(group);
+
+  streetLamps.push({ group, lampEmissive: housing, haloPlane: halo, x, z });
+  return group;
+}
 
 // ─── Game loop ──────────────────────────────────────────────
 let lastFrameTime = performance.now() / 1000;
@@ -3181,6 +3569,29 @@ function gameLoop() {
     }
 
     animateOcean(now);
+
+    // Wave crest animation — undulate crest heights with continuous noise
+    for (const wave of waves) {
+      for (let si = 0; si < wave.segMeshes.length; si++) {
+        const seg = wave.segments[si];
+        if (!seg.alive) continue;
+        const sm = wave.segMeshes[si];
+        const nx = waveNoise(seg.x, now);
+        const hMult = 1 + nx * 0.18; // ±18% crest height variation
+        sm.body.scale.y = hMult;
+        sm.foam.scale.y = hMult;
+        // Shift foam vertically to track crest
+        sm.foam.position.y = sm.body.position.y + (wave.height * (hMult - 1));
+      }
+    }
+
+    // ── Night transition ────────────────────────────────────
+    if (Math.abs(nightBlend - nightTarget) > 0.001) {
+      const step = dt / 0.8;
+      nightBlend += Math.sign(nightTarget - nightBlend) * Math.min(step, Math.abs(nightTarget - nightBlend));
+      updateNightLighting(nightBlend);
+    }
+
     updateHUD();
     $waveTimer.textContent = Math.ceil(Math.max(0, waveCountdown));
   }
@@ -3242,11 +3653,19 @@ window.restartGame = function() {
   trenches.forEach(t => { scene.remove(t.mesh); t.mesh.geometry.dispose(); t.mesh.material.dispose(); });
   trenches = [];
   waves.forEach(w => {
-    w.segMeshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+    w.segMeshes.forEach(m => { scene.remove(m.body); m.body.geometry.dispose(); m.body.material.dispose(); scene.remove(m.foam); m.foam.geometry.dispose(); m.foam.material.dispose(); });
   });
   waves = [];
   particlePool.forEach(p => { scene.remove(p.mesh); p.mesh.geometry?.dispose(); p.mesh.material?.dispose(); });
   particlePool = [];
+
+  // Clean night-specific objects
+  streetLamps.forEach(sl => {
+    sl.group.removeFromParent();
+    sl.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+  });
+  streetLamps = [];
+  nightBuildingData = [];
 
   $message.classList.remove('show');
   $gameoverPanel.classList.remove('visible');
@@ -3276,11 +3695,19 @@ window.goToMenu = function() {
   trenches.forEach(t => { scene.remove(t.mesh); t.mesh.geometry.dispose(); t.mesh.material.dispose(); });
   trenches = [];
   waves.forEach(w => {
-    w.segMeshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+    w.segMeshes.forEach(m => { scene.remove(m.body); m.body.geometry.dispose(); m.body.material.dispose(); scene.remove(m.foam); m.foam.geometry.dispose(); m.foam.material.dispose(); });
   });
   waves = [];
   particlePool.forEach(p => { scene.remove(p.mesh); p.mesh.geometry?.dispose(); p.mesh.material?.dispose(); });
   particlePool = [];
+
+  // Clean night-specific objects
+  streetLamps.forEach(sl => {
+    sl.group.removeFromParent();
+    sl.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+  });
+  streetLamps = [];
+  nightBuildingData = [];
 
   // Dispose entire map group
   disposeGroup(mapGroup);
@@ -3292,6 +3719,8 @@ window.goToMenu = function() {
   oceanGroup = new THREE.Group();
   mapGroup.add(oceanGroup);
   oceanPlanes = [];
+  oceanMaterials = [];
+  waveFoamMaterials = [];
   cars = [];
   roadPaths = [];
   pedestrians = [];
@@ -3380,6 +3809,11 @@ window.addEventListener('keydown', (e) => {
   if (e.key === '2') { currentTier = 2; trenchMode = false; flashMessage('🛡️ Renforcé (25☼)', 800); updateHUD(); }
   if (e.key === '3') { currentTier = 3; trenchMode = false; flashMessage('🧱 Béton (50☼)', 800); updateHUD(); }
   if (e.key === 't' || e.key === 'T') { trenchMode = !trenchMode; flashMessage(trenchMode ? '🕳️ Mode tranchée (5☼)' : '🧱 Mode mur', 800); updateHUD(); }
+  if (e.key === 'n' || e.key === 'N') {
+    isNight = !isNight;
+    nightTarget = isNight ? 1 : 0;
+    flashMessage(isNight ? '🌙 Mode nuit' : '☀️ Mode jour', 1200);
+  }
 });
 
 // ─── Start ──────────────────────────────────────────────────

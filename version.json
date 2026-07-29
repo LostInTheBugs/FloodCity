@@ -1,5 +1,5 @@
 {
-  "version": "2026.07.012",
+  "version": "2026.07.013",
   "date": "2026-07-29",
-  "notes": "Les habitants se réfugient enfin dans les immeubles, le parking en front de mer est réel, et les vagues emportent le décor"
+  "notes": "Île élargie au littoral irrégulier, génération déterministe par graine, corrections du sol"
 }

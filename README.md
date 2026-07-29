@@ -77,7 +77,23 @@ Les champs `version` (dans `version.json`) et `GAME_VERSION` (dans `index.html`)
 
 Le projet inclut un harnais de test automatisé dans `visual-harness/`. Il lance le jeu dans un navigateur headless, place des défenses, capture des écrans de jour et de nuit, mesure les performances et détecte le scintillement (z-fighting). Consulter [`visual-harness/README.md`](visual-harness/README.md) pour l'installation et l'utilisation.
 
+## 🌱 Graine déterministe
+
+Ajoutez `?seed=` suivi d'un nombre à l'URL pour rejouer **exactement** la même carte :
+
+```
+https://games.cloudfr.net/floodcity/?seed=42
+```
+
+La graine contrôle la disposition de la ville, des bâtiments, du mobilier urbain et de la plage. Même graine = même carte, à chaque fois. Sans le paramètre, une carte aléatoire est générée comme avant. Pratique pour comparer des stratégies, partager une configuration ou reproduire un bug.
+
 ## 📋 Notes de version
+
+### 2026.07.013
+- L'île est nettement plus grande, avec un littoral irrégulier, une vraie campagne autour de la ville et des rues moins envahissantes
+- Il est possible de rejouer exactement la même carte en ajoutant `?seed=` suivi d'un nombre à l'adresse du jeu
+- Corrections d'affichage sur l'île, dont le sol qui pouvait ne pas apparaître
+- La génération est déterministe : même graine, même résultat à chaque chargement
 
 ### 2026.07.012
 - Les habitants menacés se réfugient réellement dans les immeubles et en ressortent progressivement une fois le danger passé ; ceux dont l'immeuble est détruit ne reviennent pas

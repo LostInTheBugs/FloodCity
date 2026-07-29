@@ -3,4 +3,5 @@ node_modules/
 *.log
 package-lock.json
 visual-harness/captures/
+visual-harness/balance-results/
 visual-harness/node_modules/

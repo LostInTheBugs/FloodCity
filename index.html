@@ -388,11 +388,39 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ─── Version ──────────────────────────────────────────────────
-const GAME_VERSION = "2026.07.012";
+const GAME_VERSION = "2026.07.013";
 document.querySelector("meta[name=version]").setAttribute("content", GAME_VERSION);
 document.getElementById('home-version').textContent = 'v' + GAME_VERSION;
 document.getElementById('hud-version').textContent = 'v' + GAME_VERSION;
 console.log("Flood City v" + GAME_VERSION);
+
+// ─── Seeded Pseudo‑Random Generator (Mulberry32) ──────────────
+// When ?seed=N is present in the URL, Math.random is replaced with
+// a deterministic sequence. Same seed always produces the same city:
+// buildings, trees, decor, beach items — everything placed by the
+// generation pass is identical. Gameplay (wave timing, particles)
+// also follows the seed for full replay consistency.
+// Without the parameter, behaviour is unchanged: truly random.
+function mulberry32(seed) {
+  let s = seed | 0;
+  return function() {
+    s |= 0;
+    s = s + 0x6D2B79F5 | 0;
+    let t = Math.imul(s ^ s >>> 15, 1 | s);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+(function _installSeededRng() {
+  const urlSeed = new URLSearchParams(location.search).get('seed');
+  if (urlSeed !== null) {
+    const seed = parseInt(urlSeed, 10) || 0;
+    const rng = mulberry32(seed);
+    Math.random = rng;
+    console.log("Flood City — graine déterministe: " + seed);
+  }
+})();
 
 // ─── Ground‑level elevation stack (prevents z‑fighting) ──────
 // Layers ordered bottom→top. Each gap ≥0.03u — well above the
@@ -645,6 +673,12 @@ const MAPS = {
     // Wave config
     waveDirections: ['south'],
     waveSpawnZ: { south: -20 },
+    // Camera & view settings
+    cameraPos: { x: 22, y: 18, z: 28 },
+    fogNear: 25,
+    fogFar: 70,
+    camMinDist: 8,
+    camMaxDist: 50,
     // Roads
     roads: [
       { x1: -8, z1: -12, x2: -8, z2: 17 },
@@ -662,33 +696,79 @@ const MAPS = {
     description: 'Une île entourée d\'eau sur tous les côtés. Les vagues arrivent alternativement du nord ou du sud — défendez sur deux fronts !',
     difficulty: '⭐⭐ Moyen',
     difficultyStars: 2,
-    terrainHalf: 12,
-    islandRadius: 10.5,
+    terrainHalf: 25,
+    islandRadius: 20.0,   // average coastline radius (reference only)
     groundColor: 0x6a9e48,
-    // Coastline params (ring beach around island)
-    beachInnerR: 10.5,
-    beachOuterR: 13,
-    // Buildable zone (checked against circle x²+z² <= islandRadius²)
-    buildXMin: -10,
-    buildXMax: 10,
-    buildZMin: -10,
-    buildZMax: 10,
+    // Irregular coastline — defined by a function, not a single number.
+    //
+    // *** ANGULAR REFERENCE FRAME (single source of truth for the entire island) ***
+    // All island geometry, beach, constructibility, building/tree/decor/pedestrian
+    // placement, and wave spawning share the SAME coordinate convention:
+    //   angle = atan2(z, x)     — measured from +X (east), counter-clockwise
+    //   radius = coastFn(angle) — distance from origin where grass meets sand
+    //
+    // The ground mesh vertices are built directly in world XZ (cos(a)*r, 0, sin(a)*r)
+    // with NO rotation applied — they are already in the game's horizontal plane.
+    // isOnIsland, isInBuildZoneForPlacement, all decor placement, and sim-balance.mjs
+    // all use the identical atan2(z,x) convention so the visible ground and the
+    // logical island shape are the exact same surface.
+    //
+    // coastFn(angle) → radius where grass meets sand (angle = atan2(z, x))
+    // beachW(angle) → beach width at that angle (wider south, narrower north)
+    coastFn: function(angle) {
+      // Base radius 19.0 with perturbations proportional to the radius.
+      // Amplitudes scaled ×1.65 from the pre-enlargement values so the
+      // irregularity keeps the same visual weight — coves and headlands
+      // remain perceptible rather than being diluted into an ellipse.
+      const a = angle;
+      return 19.0
+        - Math.sin(a) * 2.0            // wider south, narrower north
+        + Math.cos(a * 2 - 0.4) * 0.85 // NE/SW lobes
+        + Math.sin(a * 3) * 0.65       // medium-frequency detail
+        + Math.cos(a * 5 + 1.2) * 0.4  // finer detail
+        + Math.cos(a + 2.5) * 0.5;     // small peninsula E/SE
+    },
+    beachW: function(angle) {
+      return 1.5 - Math.sin(angle) * 0.5; // south ~2.0, north ~1.0
+    },
+    // For backwards compat: isOnIsland and placement checks use coastFn
+    // Buildable zone (soft bounds for building generation)
+    buildXMin: -21,
+    buildXMax: 21,
+    buildZMin: -21,
+    buildZMax: 21,
+    // Building density — fewer scatter buildings because the sparse road
+    // network already generates abundant road-adjacent buildings on the
+    // larger island surface.  Target: 45-55 total.
+    scatterBuildings: 8,
     // Wave config
     waveDirections: ['north', 'south'],
-    waveSpawnZ: { south: -13, north: 13 },
-    // Roads (compact grid within island)
+    waveSpawnZ: { south: -27, north: 27 },
+    // Camera & view settings (scaled proportionally for the larger island)
+    cameraPos: { x: 24, y: 20, z: 30 },
+    fogNear: 30,
+    fogFar: 90,
+    camMinDist: 10,
+    camMaxDist: 60,
+    // Roads — sparse network to keep grass dominant (~13% of surface)
     roads: [
-      { x1: -5, z1: -12, x2: -5, z2: 12 },
-      { x1: 2, z1: -12, x2: 2, z2: 12 },
-      { x1: -12, z1: -3, x2: 12, z2: -3 },
-      { x1: -12, z1: 4, x2: 12, z2: 4 },
+      { x1: 0, z1: -21, x2: 0, z2: 21 },
+      { x1: -21, z1: -5, x2: 21, z2: -5 },
+      { x1: -21, z1: 7, x2: 21, z2: 7 },
     ],
   }
 };
 
-// Helper to check if a point is within an island's buildable circle
+// Helper to check if a point is within an island's buildable zone.
+// For irregular islands this uses coastFn; for circular (legacy) it falls back to islandRadius.
 function isOnIsland(px, pz, map) {
   if (!map.islandRadius) return true; // not an island
+  if (map.coastFn) {
+    const angle = Math.atan2(pz, px);
+    const r = Math.sqrt(px * px + pz * pz);
+    return r <= map.coastFn(angle);
+  }
+  // Legacy circular island
   return (px * px + pz * pz) <= map.islandRadius * map.islandRadius;
 }
 
@@ -706,8 +786,8 @@ mapGroup.add(oceanGroup);
 
 // ─── Shared data ────────────────────────────────────────────
 const WALL_COST = 10; // unused, kept for reference
-const RESOURCE_REGEN = 1.0;
-const RESOURCE_CAP = 300;
+const RESOURCE_REGEN = 0.7;
+const RESOURCE_CAP = 200;
 const WAVE_INTERVAL_MIN = 14;
 const WAVE_INTERVAL_MAX = 22;
 
@@ -720,12 +800,12 @@ const WAVE_INTERVAL_MAX = 22;
 const LEGIBILITY_FACTOR = 1.7;
 
 const WALL_TIERS = {
-  1: { name: 'Sac de sable', cost: 10, hp: 100, color: 0xd4b896, geoH: 0.55 },
-  2: { name: 'Renforcé', cost: 25, hp: 300, color: 0x8b7355, geoH: 0.7 },
-  3: { name: 'Béton', cost: 50, hp: 600, color: 0x888888, geoH: 0.9 },
+  1: { name: 'Sac de sable', cost: 12, hp: 100, color: 0xd4b896, geoH: 0.55 },
+  2: { name: 'Renforcé', cost: 28, hp: 350, color: 0x8b7355, geoH: 0.7 },
+  3: { name: 'Béton', cost: 52, hp: 750, color: 0x888888, geoH: 0.9 },
 };
-const TRENCH_COST = 5;
-const TRENCH_DAMAGE = 8;
+const TRENCH_COST = 6;
+const TRENCH_DAMAGE = 10;
 const TRENCH_HP = 40;
 
 let currentMap = null;
@@ -1867,6 +1947,19 @@ function findIntersections() {
 function generateMap(map) {
   currentMap = map;
 
+  // ── Per-map camera & view settings ──────────────────────
+  if (map.cameraPos) {
+    camera.position.set(map.cameraPos.x, map.cameraPos.y, map.cameraPos.z);
+    camera.lookAt(0, 0, 0);
+  }
+  if (map.fogNear != null && map.fogFar != null) {
+    scene.fog = new THREE.Fog(0x87ceeb, map.fogNear, map.fogFar);
+  }
+  if (map.camMinDist != null) controls.minDistance = map.camMinDist;
+  if (map.camMaxDist != null) controls.maxDistance = map.camMaxDist;
+  controls.target.set(0, 1, 0);
+  controls.update();
+
   // ── Purge entire map group ──────────────────────────────
   disposeGroup(mapGroup);
   scene.remove(mapGroup);
@@ -1902,58 +1995,130 @@ function generateMap(map) {
 
   // ── Ground ──────────────────────────────────────────────
   if (map.islandRadius) {
-    // Circular island ground
-    const groundGeo = new THREE.CircleGeometry(map.islandRadius, 48);
-    const groundMat = new THREE.MeshStandardMaterial({ color: map.groundColor, roughness: 0.85 });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = Y_GROUND;
-    ground.receiveShadow = true;
-    mapGroup.add(ground);
+    // ── Helper: build irregular island geometry ──────────────
+    // Returns { coastSamples: [{angle,r}], maxCoastR, maxBeachR }
+    // where r is the coast radius at each angle sample.
+    const N_COAST = 80;
+    const coastSamples = [];
+    let maxCoastR = 0, maxBeachR = 0;
+    for (let i = 0; i <= N_COAST; i++) {
+      const angle = (i / N_COAST) * Math.PI * 2;
+      const cr = map.coastFn ? map.coastFn(angle) : map.islandRadius;
+      const bw = map.beachW ? map.beachW(angle) : (map.beachOuterR - map.beachInnerR);
+      coastSamples.push({ angle, cr, br: cr + bw });
+      if (cr > maxCoastR) maxCoastR = cr;
+      if (cr + bw > maxBeachR) maxBeachR = cr + bw;
+    }
 
-    // Ring beach
-    const beachGeo = new THREE.RingGeometry(map.beachInnerR, map.beachOuterR, 64);
-    const beachMat = new THREE.MeshStandardMaterial({ color: 0xe8d5a8, roughness: 0.9 });
-    const beach = new THREE.Mesh(beachGeo, beachMat);
-    beach.rotation.x = -Math.PI / 2;
-    beach.position.y = Y_BEACH;
-    beach.receiveShadow = true;
-    mapGroup.add(beach);
+    // Store for beach decor access
+    map._coastSamples = coastSamples;
+    map._maxCoastR = maxCoastR;
+    map._maxBeachR = maxBeachR;
 
-    // Foam ring
-    const foamGeo = new THREE.RingGeometry(map.beachOuterR - 0.3, map.beachOuterR + 0.2, 64);
-    const foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false });
-    const foamRing = new THREE.Mesh(foamGeo, foamMat);
-    foamRing.rotation.x = -Math.PI / 2;
-    foamRing.position.y = Y_FOAM;
-    foamRing.name = 'foamRing';
-    mapGroup.add(foamRing);
+    // ── Ground disc (irregular) ─────────────────────────────
+    {
+      const verts = [0, 0, 0]; // center
+      for (const s of coastSamples) {
+        verts.push(Math.cos(s.angle) * s.cr, 0, Math.sin(s.angle) * s.cr);
+      }
+      const indices = [];
+      // Triangle fan — vertices are in XZ, normals computed by Three.js.
+      // DoubleSide ensures visibility regardless of winding orientation.
+      for (let i = 0; i < N_COAST; i++) {
+        indices.push(0, i + 2, i + 1);
+      }
+      const groundGeo = new THREE.BufferGeometry();
+      groundGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+      groundGeo.setIndex(indices);
+      groundGeo.computeVertexNormals();
+      const groundMat = new THREE.MeshStandardMaterial({ color: map.groundColor, roughness: 0.85, side: THREE.DoubleSide });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.position.y = Y_GROUND;
+      ground.receiveShadow = true;
+      mapGroup.add(ground);
+    }
 
-    // Ocean planes around the island (north, south, east, west)
-    const oceanMat = new THREE.MeshStandardMaterial({
+    // ── Beach ring (irregular) ──────────────────────────────
+    {
+      const verts = [];
+      for (const s of coastSamples) {
+        verts.push(
+          Math.cos(s.angle) * s.cr, 0, Math.sin(s.angle) * s.cr,       // inner
+          Math.cos(s.angle) * s.br, 0, Math.sin(s.angle) * s.br        // outer
+        );
+      }
+      const indices = [];
+      for (let i = 0; i < N_COAST; i++) {
+        const a = i * 2, b = i * 2 + 1, c = (i + 1) * 2, d = (i + 1) * 2 + 1;
+        // Quad strip — inner/outer ring. DoubleSide for robustness.
+        indices.push(a, b, c, b, d, c);
+      }
+      const beachGeo = new THREE.BufferGeometry();
+      beachGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+      beachGeo.setIndex(indices);
+      beachGeo.computeVertexNormals();
+      const beachMat = new THREE.MeshStandardMaterial({ color: 0xe8d5a8, roughness: 0.9, side: THREE.DoubleSide });
+      const beach = new THREE.Mesh(beachGeo, beachMat);
+      beach.position.y = Y_BEACH;
+      beach.receiveShadow = true;
+      mapGroup.add(beach);
+    }
+
+    // ── Foam ring (irregular, at beach outer edge) ──────────
+    {
+      const verts = [];
+      const foamInner = 0.25, foamOuter = 0.25;
+      for (const s of coastSamples) {
+        verts.push(
+          Math.cos(s.angle) * (s.br - foamInner), 0, Math.sin(s.angle) * (s.br - foamInner),
+          Math.cos(s.angle) * (s.br + foamOuter), 0, Math.sin(s.angle) * (s.br + foamOuter)
+        );
+      }
+      const indices = [];
+      for (let i = 0; i < N_COAST; i++) {
+        const a = i * 2, b = i * 2 + 1, c = (i + 1) * 2, d = (i + 1) * 2 + 1;
+        // Quad strip — inner/outer ring. DoubleSide for robustness.
+        indices.push(a, b, c, b, d, c);
+      }
+      const foamGeo = new THREE.BufferGeometry();
+      foamGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+      foamGeo.setIndex(indices);
+      foamGeo.computeVertexNormals();
+      const foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false });
+      const foamRing = new THREE.Mesh(foamGeo, foamMat);
+      foamRing.position.y = Y_FOAM;
+      foamRing.name = 'foamRing';
+      mapGroup.add(foamRing);
+    }
+
+    // ── Ocean planes around the island ──────────────────────
+    const nearOceanMat = new THREE.MeshStandardMaterial({
       color: 0x1565a8, roughness: 0.2, metalness: 0.7,
       transparent: true, opacity: 0.88
     });
-    const oceanSides = [
-      { x: 0, z: -(map.beachOuterR + 7), w: 36, d: 14, name: 'south' },
-      { x: 0, z: (map.beachOuterR + 7), w: 36, d: 14, name: 'north' },
-      { x: -(map.beachOuterR + 7), z: 0, w: 14, d: 36, name: 'west' },
-      { x: (map.beachOuterR + 7), z: 0, w: 14, d: 36, name: 'east' },
-    ];
-    oceanSides.forEach(side => {
-      const segW = side.name === 'north' || side.name === 'south' ? side.w : side.d;
-      const segH = side.name === 'north' || side.name === 'south' ? side.d : side.w;
-      const geo = new THREE.PlaneGeometry(segW, segH, Math.max(8, Math.floor(segW / 2)), Math.max(4, Math.floor(segH / 2)));
-      const mesh = new THREE.Mesh(geo, oceanMat);
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.position.set(side.x, 0.06, side.z);
-      mesh.receiveShadow = true;
-      mesh.userData = { oceanSide: side.name };
-      oceanGroup.add(mesh);
-      oceanPlanes.push(mesh);
-    });
+    {
+      const ext = maxBeachR + 6;
+      const oceanSides = [
+        { x: 0, z: -ext, w: map.terrainHalf * 2 + 8, d: 14, name: 'south' },
+        { x: 0, z: ext, w: map.terrainHalf * 2 + 8, d: 14, name: 'north' },
+        { x: -ext, z: 0, w: 14, d: map.terrainHalf * 2 + 8, name: 'west' },
+        { x: ext, z: 0, w: 14, d: map.terrainHalf * 2 + 8, name: 'east' },
+      ];
+      oceanSides.forEach(side => {
+        const segW = side.name === 'north' || side.name === 'south' ? side.w : side.d;
+        const segH = side.name === 'north' || side.name === 'south' ? side.d : side.w;
+        const geo = new THREE.PlaneGeometry(segW, segH, Math.max(8, Math.floor(segW / 2)), Math.max(4, Math.floor(segH / 2)));
+        const mesh = new THREE.Mesh(geo, nearOceanMat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(side.x, Y_BELOW_ALL, side.z);
+        mesh.receiveShadow = true;
+        mesh.userData = { oceanSide: side.name };
+        oceanGroup.add(mesh);
+        oceanPlanes.push(mesh);
+      });
+    }
 
-    // Far ocean (under everything — matches near ocean material for seamless blend)
+    // Far ocean (under everything)
     const farOceanGeo = new THREE.PlaneGeometry(400, 200);
     const farOceanMat = new THREE.MeshStandardMaterial({
       color: 0x1565a8, roughness: 0.2, metalness: 0.7,
@@ -2137,7 +2302,8 @@ function generateMap(map) {
   }
 
   // Fill gaps with scattered buildings
-  for (let i = 0; i < 25; i++) {
+  const scatterCount = map.scatterBuildings != null ? map.scatterBuildings : 25;
+  for (let i = 0; i < scatterCount; i++) {
     // Generate dimensions first for per-building clearance calculation
     const w = 0.8 + Math.random() * 1.2;
     const d = 0.8 + Math.random() * 1.2;
@@ -2190,9 +2356,11 @@ function generateMap(map) {
   for (let vi = 0; vi < vendorCount; vi++) {
     let vx, vz;
     if (map.islandRadius) {
-      // Place on ring beach, random angle
+      // Place on island beach using irregular coastline
       const a = (vi / vendorCount) * Math.PI * 2 + Math.random() * 0.6;
-      const r = map.beachInnerR + (map.beachOuterR - map.beachInnerR) * 0.5;
+      const cr = map.coastFn ? map.coastFn(a) : map.islandRadius;
+      const bw = map.beachW ? map.beachW(a) : (map.beachOuterR - map.beachInnerR);
+      const r = cr + bw * 0.5;
       vx = Math.cos(a) * r;
       vz = Math.sin(a) * r;
     } else {
@@ -2215,31 +2383,37 @@ function generateMap(map) {
   const walkColors = [0xff5533, 0x33aaff, 0x88dd44, 0xff8833, 0xcc44ff, 0xdd4444, 0xdddd44, 0x44ccaa];
 
   if (map.islandRadius) {
-    // Island: swimmers around the ring, in the water just beyond beach
+    // Island: swimmers just beyond the beach outer edge
     for (let s = 0; s < 8; s++) {
       const angle = (s / 8) * Math.PI * 2 + Math.random() * 0.3;
-      const r = map.beachOuterR + 0.6 + Math.random() * 1.2;
+      const cr = map.coastFn ? map.coastFn(angle) : map.islandRadius;
+      const bw = map.beachW ? map.beachW(angle) : (map.beachOuterR - map.beachInnerR);
+      const br = cr + bw; // beach outer edge
+      const r = br + 0.6 + Math.random() * 1.2;
       const sx = Math.cos(angle) * r;
       const sz = Math.sin(angle) * r;
       beachPeople.push(createSwimmer(sx, sz, swimColors[s % swimColors.length]));
     }
-    // Walkers on the ring beach
+    // Walkers on the beach sand (irregular)
     for (let w = 0; w < 6; w++) {
       const angle = (w / 6) * Math.PI * 2 + Math.random() * 0.5;
-      const r = map.beachInnerR + (map.beachOuterR - map.beachInnerR) * (0.3 + Math.random() * 0.4);
+      const cr = map.coastFn ? map.coastFn(angle) : map.islandRadius;
+      const bw = map.beachW ? map.beachW(angle) : (map.beachOuterR - map.beachInnerR);
+      const r = cr + bw * (0.3 + Math.random() * 0.4);
       const wx = Math.cos(angle) * r;
       const wz = Math.sin(angle) * r;
       beachPeople.push(createBeachWalker(wx, wz, walkColors[w % walkColors.length]));
     }
-    // Ball player on island beach (find the extra beach balls)
+    // Ball player on island beach
     const islandBall = cityGroup.children.find(c => c.userData && c.userData.beachBallPropHolder);
     if (!islandBall) {
-      // Create a ball for island
       const bGeo = new THREE.SphereGeometry(0.03, 8, 8);
       const bMat = new THREE.MeshStandardMaterial({ color: 0xff6644, roughness: 0.3 });
       const iball = new THREE.Mesh(bGeo, bMat);
       const ba = Math.random() * Math.PI * 2;
-      const br = map.beachInnerR + (map.beachOuterR - map.beachInnerR) * 0.5;
+      const cr2 = map.coastFn ? map.coastFn(ba) : map.islandRadius;
+      const bw2 = map.beachW ? map.beachW(ba) : (map.beachOuterR - map.beachInnerR);
+      const br = cr2 + bw2 * 0.5;
       iball.position.set(Math.cos(ba) * br, 0.06, Math.sin(ba) * br);
       iball.castShadow = true;
       iball.scale.setScalar(LEGIBILITY_FACTOR);
@@ -2434,7 +2608,12 @@ function placeTrench(worldPos) {
 function isInBuildZoneForPlacement(px, pz) {
   if (!currentMap) return false;
   if (currentMap.islandRadius) {
-    // Circular island: allow building up to the beach edge (islandRadius)
+    if (currentMap.coastFn) {
+      const angle = Math.atan2(pz, px);
+      const r = Math.sqrt(px * px + pz * pz);
+      return r <= currentMap.coastFn(angle);
+    }
+    // Legacy circular island: allow building up to the islandRadius
     return (px * px + pz * pz) <= currentMap.islandRadius * currentMap.islandRadius;
   }
   // Littoral: full terrain is playable — beach sand included.
@@ -2531,7 +2710,7 @@ function spawnWave() {
   // Difficulty: linear ramp waves 1-5, then logarithmic growth (no cap)
   const difficulty = waveNumber <= 5
     ? waveNumber / 5
-    : 1 + Math.log2(waveNumber / 5) * 0.6;
+    : 1 + Math.log2(waveNumber / 5) * 0.8;
   const rawWidth = 6 + Math.random() * (8 + difficulty * 18);
   const waveWidth = Math.min(rawWidth, map.terrainHalf * 2 - 2);
   const waveH = 1.5 + difficulty * 5;
@@ -2791,7 +2970,7 @@ function updateWaves(dt) {
 
     if (pastNorth || pastSouth || allDead) {
       // Reward scales with difficulty (same formula as spawnWave)
-      const diffFactor = waveNumber <= 5 ? waveNumber / 5 : 1 + Math.log2(waveNumber / 5) * 0.6;
+      const diffFactor = waveNumber <= 5 ? waveNumber / 5 : 1 + Math.log2(waveNumber / 5) * 0.8;
       const diffBonus = Math.floor(diffFactor * 8);
       if (pastNorth || pastSouth) {
         const alive = buildings.filter(b => b.alive).length;
@@ -4076,7 +4255,12 @@ function gameLoop() {
             // Clamp to beach zone and turn around
             if (map.islandRadius) {
               const dist = Math.hypot(bp.group.position.x, bp.group.position.z);
-              if (dist < map.beachInnerR + 0.2 || dist > map.beachOuterR - 0.2) {
+              const a = Math.atan2(bp.group.position.z, bp.group.position.x);
+              const cr = map.coastFn ? map.coastFn(a) : map.islandRadius;
+              const bw = map.beachW ? map.beachW(a) : (map.beachOuterR - map.beachInnerR || 2.5);
+              const innerR = cr + 0.2;
+              const outerR = cr + bw - 0.2;
+              if (dist < innerR || dist > outerR) {
                 bp.walkDir *= -1;
               }
             } else {
@@ -4641,14 +4825,6 @@ gameLoop();
 console.log('  🗺️  Cartes : ' + Object.keys(MAPS).join(', '));
 console.log('  🖱️ Clic = placer | ⌨️ 1/2/3 = tier mur | T = tranchée | R = recommencer | M = menu');
 
-// Debug helpers for inspection
-window.__getSceneryDecor = () => sceneryDecor;
-window.__getBeachPeople = () => beachPeople;
-window.__getStreetLamps = () => streetLamps;
-window.__getParkedCars = () => parkedCars;
-window.__getWaves = () => waves;
-window.__getShelteredEntities = () => shelteredEntities;
-window.__getWaveCountdown = () => waveCountdown;
 </script>
 </body>
 </html>

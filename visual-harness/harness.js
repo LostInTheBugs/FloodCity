@@ -28,7 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const { PNG } = require('pngjs');
 
-const RAW_URL = process.argv[2] || 'http://localhost:8080/index.html';
+const RAW_URL = process.argv[2] || 'http://localhost:8002/index.html';
 const CLI_SEED = process.argv[3] || '42';
 const BREAK_GROUND = process.argv.includes('--break-ground');
 const CAPTURES_DIR = path.join(__dirname, 'captures');

@@ -1,5 +1,5 @@
 {
-  "version": "2026.07.013",
-  "date": "2026-07-29",
-  "notes": "Île élargie au littoral irrégulier, génération déterministe par graine, corrections du sol"
+  "version": "2026.08.001",
+  "date": "2026-08-01",
+  "notes": "Conformité conventions : port 8002, VERSION, CHANGELOG, README"
 }

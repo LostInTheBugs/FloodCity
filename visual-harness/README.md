@@ -30,13 +30,13 @@ npm install
 ```bash
 # 1. Servir le jeu (dans un autre terminal)
 cd /home/administrator/floodcity
-python3 -m http.server 8080
+python3 -m http.server 8002
 
 # 2. Lancer le harnais
 cd visual-harness
 node harness.js [URL] [graine]
 
-# URL par défaut : http://localhost:8080/index.html
+# URL par défaut : http://localhost:8002/index.html
 # Graine par défaut : 42
 ```
 
@@ -56,7 +56,7 @@ différentes donneraient des verdicts différents, ce qui est un piège.
 node harness.js                                    # seed=42 (défaut)
 node harness.js http://127.0.0.1:8099/index.html   # seed=42 (injecté)
 node harness.js http://127.0.0.1:8099/index.html 99 # seed=99
-node harness.js http://localhost:8080/index.html?seed=7  # seed=7 (respecté)
+node harness.js http://localhost:8002/index.html?seed=7  # seed=7 (respecté)
 ```
 
 ### Tester la production

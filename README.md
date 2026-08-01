@@ -55,11 +55,21 @@ Les tranchées infligent 8 dégâts/seconde aux vagues mais s'épuisent au conta
 open index.html
 
 # Ou servir en local
-python3 -m http.server 8080
-# → http://localhost:8080
+python3 -m http.server 8002
+# → http://localhost:8002
 ```
 
 Déployé sur https://games.cloudfr.net/floodcity/
+
+## ⚙️ Configuration
+
+Le projet est un fichier HTML statique servi avec Three.js en CDN. Aucune dépendance à installer.
+
+| Variable | Défaut | Description |
+|---|---|---|
+| `PORT` | `8002` | Port d'écoute du serveur HTTP local (surchargeable) |
+
+Dépendances : navigateur récent avec WebGL, [Three.js](https://threejs.org/) r160 (CDN importmap).
 
 ## ⚠️ Cohérence au déploiement
 
@@ -110,6 +120,9 @@ https://games.cloudfr.net/floodcity/?seed=42
 La graine contrôle la disposition de la ville, des bâtiments, du mobilier urbain et de la plage. Même graine = même carte, à chaque fois. Sans le paramètre, une carte aléatoire est générée comme avant. Pratique pour comparer des stratégies, partager une configuration ou reproduire un bug.
 
 ## 📋 Notes de version
+
+### 2026.08.001
+- Mise en conformité : port par défaut 8002, création de VERSION et CHANGELOG, documentation enrichie
 
 ### 2026.07.013
 - L'île est nettement plus grande, avec un littoral irrégulier, une vraie campagne autour de la ville et des rues moins envahissantes
@@ -181,4 +194,4 @@ La graine contrôle la disposition de la ville, des bâtiments, du mobilier urba
 
 ## 📝 Repo
 
-https://github.com/LostInTheBugs/FloodCity
+https://github.com/LostInTheBugs/FloodCity — [Releases](https://github.com/LostInTheBugs/FloodCity/releases)

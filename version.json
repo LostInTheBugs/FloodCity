@@ -1,5 +1,5 @@
 {
-  "version": "2026.08.001",
+  "version": "2026.08.002",
   "date": "2026-08-01",
-  "notes": "Conformité conventions : port 8002, VERSION, CHANGELOG, README"
+  "notes": "Île refaite, génération déterministe, harnais de vérification visuelle et corrections du sol"
 }

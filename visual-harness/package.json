@@ -1,7 +1,7 @@
 {
   "name": "floodcity-visual-harness",
   "private": true,
-  "version": "2026.08.001",
+  "version": "2026.08.002",
   "description": "Visual verification harness for Flood City — headless gameplay, screenshots, and flicker detection",
   "scripts": {
     "test": "node harness.js",

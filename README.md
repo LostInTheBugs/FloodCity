@@ -121,6 +121,12 @@ La graine contrôle la disposition de la ville, des bâtiments, du mobilier urba
 
 ## 📋 Notes de version
 
+### 2026.08.002
+- Île entièrement refaite : bien plus grande, littoral irrégulier, campagne autour de la ville
+- Correction de l'affichage du sol de l'île, qui pouvait ne pas apparaître
+- Possibilité de rejouer exactement la même carte avec le paramètre `?seed=`
+- Outillage interne : harnais de vérification visuelle et banc d'essai d'équilibrage
+
 ### 2026.08.001
 - Mise en conformité : port par défaut 8002, création de VERSION et CHANGELOG, documentation enrichie
 

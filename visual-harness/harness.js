@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { PNG } = require('pngjs');
 
-const TARGET_URL = process.argv[2] || 'http://localhost:8080';
+const TARGET_URL = process.argv[2] || 'http://localhost:8002';
 const BREAK_GROUND = process.argv.includes('--break-ground');
 const CAPTURES_DIR = path.join(__dirname, 'captures');
 const VIEWPORT = { width: 1280, height: 720 };

@@ -30,13 +30,13 @@ npm install
 ```bash
 # 1. Servir le jeu (dans un autre terminal)
 cd /home/administrator/floodcity
-python3 -m http.server 8080
+python3 -m http.server 8002
 
 # 2. Lancer le harnais
 cd visual-harness
 node harness.js [URL]
 
-# URL par défaut : http://localhost:8080
+# URL par défaut : http://localhost:8002
 ```
 
 ### Tester la production

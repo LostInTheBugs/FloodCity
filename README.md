@@ -77,6 +77,28 @@ Les champs `version` (dans `version.json`) et `GAME_VERSION` (dans `index.html`)
 
 Le projet inclut un harnais de test automatisé dans `visual-harness/`. Il lance le jeu dans un navigateur headless, place des défenses, capture des écrans de jour et de nuit, mesure les performances et détecte le scintillement (z-fighting). Consulter [`visual-harness/README.md`](visual-harness/README.md) pour l'installation et l'utilisation.
 
+### Interface de vérification exposée dans `index.html`
+
+Le fichier livré expose volontairement un petit bloc d'API destiné exclusivement au harnais. Ces fonctions sont regroupées sous un commentaire explicite dans le code source, avec le préfixe `harness_` :
+
+| Fonction | Rôle | Lecture / Écriture |
+|---|---|---|
+| `harness_camTopdown(maxDist, phi)` | Positionne la caméra en vue quasi-verticale | ✏️ Écrit la position de la caméra uniquement |
+| `harness_camState()` | Retourne position + cible de la caméra | 📖 Lecture seule |
+| `harness_unprojectScreen(sx, sy, worldY)` | Projette des coordonnées écran → monde | 📖 Lecture seule |
+| `harness_projectWorld(wx, wy, wz)` | Projette des coordonnées monde → écran | 📖 Lecture seule |
+| Balise `<meta name="map-data">` | Données d'échelle de carte (terrainHalf, camMaxDist...) | 📖 Lecture seule |
+
+**Périmètre :** positionnement de caméra, projection de coordonnées, lecture d'échelle de carte. Aucune de ces fonctions ne modifie l'état de jeu (bâtiments, ressources, vagues, score, etc.).
+
+Ce bloc est accepté dans le fichier livré parce qu'il est nécessaire au fonctionnement du harnais de vérification et qu'il est strictement cantonné à son rôle — pas de dérive possible vers l'accès à l'état de jeu.
+
+Pour contrôler qu'aucune autre interface de test ne s'est glissée :
+```bash
+grep -c "harness_" index.html    # doit donner le nombre de fonctions (4)
+grep -c "window.__" index.html   # doit être à 0 (réservé au harnais en Puppeteer)
+```
+
 ## 🌱 Graine déterministe
 
 Ajoutez `?seed=` suivi d'un nombre à l'URL pour rejouer **exactement** la même carte :

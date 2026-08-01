@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="version" content="">
+<meta name="map-data" content="{}">
 <title>Flood City</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -609,6 +610,78 @@ controls.maxPolarAngle = Math.PI / 2 + 0.3;
 controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
 controls.update();
 
+// ─── Interface de vérification (harnais visuel) ──────────
+// Ce bloc est volontairement exposé. Il ne sert QU'au harnais
+// de vérification et n'est utilisé par aucune logique de jeu.
+// Périmètre autorisé : positionnement de caméra, projection de
+// coordonnées, lecture d'échelle de carte. AUCUN accès en
+// écriture à l'état de jeu.
+//
+// Préfixe : « harness_ » — facile à contrôler via grep.
+
+// Positionne la caméra en vue quasi‑verticale à distance max,
+// en conservant l'azimut (theta) actuel.  phi ≈ 0 → vertical.
+window.harness_camTopdown = function(maxDist, phi) {
+  const t = controls.target;
+  const dx = camera.position.x - t.x;
+  const dz = camera.position.z - t.z;
+  const theta = Math.atan2(dz, dx);
+  camera.position.set(
+    t.x + maxDist * Math.sin(phi) * Math.cos(theta),
+    t.y + maxDist * Math.cos(phi),
+    t.z + maxDist * Math.sin(phi) * Math.sin(theta)
+  );
+  camera.lookAt(t);
+  controls.update();
+};
+
+// État complet de la caméra : position + cible OrbitControls.
+window.harness_camState = function() {
+  return {
+    px: camera.position.x.toFixed(1),
+    py: camera.position.y.toFixed(1),
+    pz: camera.position.z.toFixed(1),
+    tx: controls.target.x.toFixed(1),
+    ty: controls.target.y.toFixed(1),
+    tz: controls.target.z.toFixed(1)
+  };
+};
+
+// Projection écran → monde : trouve l'intersection du rayon
+// caméra avec le plan horizontal y = worldY.
+window.harness_unprojectScreen = function(sx, sy, worldY) {
+  const ndc = new THREE.Vector3(
+    (sx / window.innerWidth) * 2 - 1,
+    -(sy / window.innerHeight) * 2 + 1,
+    1.0
+  );
+  camera.updateMatrixWorld(true);
+  camera.updateProjectionMatrix();
+  const v = ndc.unproject(camera);
+  const dir = new THREE.Vector3().subVectors(v, camera.position).normalize();
+  const t = (worldY - camera.position.y) / dir.y;
+  const intersect = new THREE.Vector3().copy(camera.position).add(dir.multiplyScalar(t));
+  return { wx: intersect.x.toFixed(1), wz: intersect.z.toFixed(1) };
+};
+
+// Projection monde → écran : transmet un point 3D en pixels
+// écran et la position caméra associée.
+window.harness_projectWorld = function(wx, wy, wz) {
+  const v = new THREE.Vector3(wx, wy, wz);
+  camera.updateMatrixWorld(true);
+  camera.updateProjectionMatrix();
+  v.project(camera);
+  const sx = Math.round((v.x * 0.5 + 0.5) * window.innerWidth);
+  const sy = Math.round((-v.y * 0.5 + 0.5) * window.innerHeight);
+  return { sx, sy,
+    cpx: camera.position.x.toFixed(1),
+    cpy: camera.position.y.toFixed(1),
+    cpz: camera.position.z.toFixed(1)
+  };
+};
+
+// ─── Fin interface de vérification ──────────────────────
+
 // ─── Lighting ───────────────────────────────────────────────
 const ambient = new THREE.AmbientLight(0x8899cc, 1.2);
 scene.add(ambient);
@@ -696,8 +769,8 @@ const MAPS = {
     description: 'Une île entourée d\'eau sur tous les côtés. Les vagues arrivent alternativement du nord ou du sud — défendez sur deux fronts !',
     difficulty: '⭐⭐ Moyen',
     difficultyStars: 2,
-    terrainHalf: 25,
-    islandRadius: 20.0,   // average coastline radius (reference only)
+    terrainHalf: 45,
+    islandRadius: 33.3,   // mean coastline radius (33.3 base + perturbations avg ≈ 0)
     groundColor: 0x6a9e48,
     // Irregular coastline — defined by a function, not a single number.
     //
@@ -716,46 +789,47 @@ const MAPS = {
     // coastFn(angle) → radius where grass meets sand (angle = atan2(z, x))
     // beachW(angle) → beach width at that angle (wider south, narrower north)
     coastFn: function(angle) {
-      // Base radius 19.0 with perturbations proportional to the radius.
-      // Amplitudes scaled ×1.65 from the pre-enlargement values so the
-      // irregularity keeps the same visual weight — coves and headlands
-      // remain perceptible rather than being diluted into an ellipse.
+      // Base radius 33.3 with perturbations scaled ×√1.75 from
+      // the v2026.07.013 values — coves and headlands stay perceptible
+      // rather than being diluted into an ellipse.
       const a = angle;
-      return 19.0
-        - Math.sin(a) * 2.0            // wider south, narrower north
-        + Math.cos(a * 2 - 0.4) * 0.85 // NE/SW lobes
-        + Math.sin(a * 3) * 0.65       // medium-frequency detail
-        + Math.cos(a * 5 + 1.2) * 0.4  // finer detail
-        + Math.cos(a + 2.5) * 0.5;     // small peninsula E/SE
+      return 33.3
+        - Math.sin(a) * 4.0              // wider south, narrower north
+        + Math.cos(a * 2 - 0.4) * 1.7    // NE/SW lobes
+        + Math.sin(a * 3) * 1.3          // medium-frequency detail
+        + Math.cos(a * 5 + 1.2) * 0.8    // finer detail
+        + Math.cos(a + 2.5) * 1.0;       // small peninsula E/SE
     },
     beachW: function(angle) {
-      return 1.5 - Math.sin(angle) * 0.5; // south ~2.0, north ~1.0
+      return 2.0 - Math.sin(angle) * 0.7; // south ~2.7, north ~1.3
     },
     // For backwards compat: isOnIsland and placement checks use coastFn
+    // Building density — sparse scatter because road-adjacent buildings
+    // already fill the interior.  Target: 80-100 total on the larger island.
+    scatterBuildings: 5,
     // Buildable zone (soft bounds for building generation)
-    buildXMin: -21,
-    buildXMax: 21,
-    buildZMin: -21,
-    buildZMax: 21,
-    // Building density — fewer scatter buildings because the sparse road
-    // network already generates abundant road-adjacent buildings on the
-    // larger island surface.  Target: 45-55 total.
-    scatterBuildings: 8,
+    buildXMin: -40,
+    buildXMax: 40,
+    buildZMin: -40,
+    buildZMax: 40,
     // Wave config
     waveDirections: ['north', 'south'],
-    waveSpawnZ: { south: -27, north: 27 },
+    waveSpawnZ: { south: -48, north: 48 },
     // Camera & view settings (scaled proportionally for the larger island)
-    cameraPos: { x: 24, y: 20, z: 30 },
-    fogNear: 30,
-    fogFar: 90,
-    camMinDist: 10,
-    camMaxDist: 60,
-    // Roads — sparse network to keep grass dominant (~13% of surface)
+    cameraPos: { x: 42, y: 36, z: 53 },
+    fogNear: 53,
+    fogFar: 158,
+    camMinDist: 18,
+    camMaxDist: 106,
+    // Roads — sparse network to keep grass dominant.  Endpoints are
+    // pushed out to terrainHalf and clipped to coastFn at runtime so
+    // no asphalt ever spills onto the water.
     roads: [
-      { x1: 0, z1: -21, x2: 0, z2: 21 },
-      { x1: -21, z1: -5, x2: 21, z2: -5 },
-      { x1: -21, z1: 7, x2: 21, z2: 7 },
+      { x1: 0, z1: -45, x2: 0, z2: 45 },
+      { x1: -45, z1: -6, x2: 45, z2: -6 },
+      { x1: -45, z1: 9, x2: 45, z2: 9 },
     ],
+    roadSpacing: 4.0,   // wider spacing keeps building count in the 80-100 range
   }
 };
 
@@ -1957,6 +2031,17 @@ function generateMap(map) {
   }
   if (map.camMinDist != null) controls.minDistance = map.camMinDist;
   if (map.camMaxDist != null) controls.maxDistance = map.camMaxDist;
+  // Données d'échelle de carte pour l'interface de vérification
+  // (voir bloc « Interface de vérification » ci‑dessus).
+  // Écrit dans une balise <meta> pour survivre aux rechargements
+  // de page entre cartes (même motif que GAME_VERSION).
+  const metaMapData = document.querySelector('meta[name="map-data"]');
+  if (metaMapData) {
+    metaMapData.setAttribute('content', JSON.stringify({
+      terrainHalf: map.terrainHalf, camMaxDist: map.camMaxDist || 0,
+      islandRadius: map.islandRadius || 0
+    }));
+  }
   controls.target.set(0, 1, 0);
   controls.update();
 
@@ -2205,8 +2290,68 @@ function generateMap(map) {
   mapGroup.add(grid);
 
   // ── Roads ───────────────────────────────────────────────
+  // On island maps, clip each road segment so no asphalt, sidewalk, or
+  // streetlamp extends past the coastline.  Uses binary search along the
+  // road direction to find the exact intersection with coastFn.
+  function clipRoadSegment(x1, z1, x2, z2) {
+    if (!map.coastFn) return { x1, z1, x2, z2 }; // littoral — no clipping needed
+
+    const dx = x2 - x1, dz = z2 - z1;
+    const len = Math.sqrt(dx * dx + dz * dz);
+    if (len < 0.01) return { x1, z1, x2, z2 };
+
+    // Sample N points along the segment, find the continuous inside interval
+    const N = 200;
+    const samples = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const sx = x1 + dx * t, sz = z1 + dz * t;
+      const a = Math.atan2(sz, sx);
+      const r = Math.sqrt(sx * sx + sz * sz);
+      samples.push(r <= map.coastFn(a));
+    }
+
+    // Find first and last true indices
+    let firstTrue = -1, lastTrue = -1;
+    for (let i = 0; i <= N; i++) {
+      if (samples[i]) {
+        if (firstTrue < 0) firstTrue = i;
+        lastTrue = i;
+      }
+    }
+    if (firstTrue < 0) return null; // road entirely outside island
+
+    // Binary-search refine the two boundary t-values
+    function refineBoundary(tApprox, inside) {
+      let lo = 0, hi = 1;
+      // Zoom into 1/N neighbourhood
+      const half = 0.5 / N;
+      lo = Math.max(0, tApprox - half * 2);
+      hi = Math.min(1, tApprox + half * 2);
+      for (let iter = 0; iter < 20; iter++) {
+        const mid = (lo + hi) / 2;
+        const mx = x1 + dx * mid, mz = z1 + dz * mid;
+        const a = Math.atan2(mz, mx);
+        const r = Math.sqrt(mx * mx + mz * mz);
+        if ((r <= map.coastFn(a)) === inside) {
+          if (inside) hi = mid; else lo = mid;
+        } else {
+          if (inside) lo = mid; else hi = mid;
+        }
+      }
+      return (lo + hi) / 2;
+    }
+
+    const tIn  = refineBoundary(firstTrue / N, true);
+    const tOut = refineBoundary(lastTrue  / N, true);
+
+    return { x1: x1 + dx * tIn, z1: z1 + dz * tIn,
+             x2: x1 + dx * tOut, z2: z1 + dz * tOut };
+  }
+
   for (const r of (map.roads || [])) {
-    createRoad(r.x1, r.z1, r.x2, r.z2);
+    const clipped = clipRoadSegment(r.x1, r.z1, r.x2, r.z2);
+    if (clipped) createRoad(clipped.x1, clipped.z1, clipped.x2, clipped.z2);
   }
 
   // ── Buildings along roads ──────────────────────────────
@@ -2269,7 +2414,7 @@ function generateMap(map) {
     const nz = -Math.sin(angle);
 
     for (const side of [-1, 1]) {
-      const spacing = 2.8 + Math.random() * 1.4;
+      const spacing = (map.roadSpacing || 2.8) + Math.random() * 1.4;
       const count = Math.floor(len / spacing);
       for (let i = 0; i < count; i++) {
         const t = (i + 0.5) / count;

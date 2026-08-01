@@ -45,19 +45,19 @@ const MAPS = {
   },
   ile: {
     name: 'Île',
-    terrainHalf: 25,
-    islandRadius: 20.0,   // average reference
+    terrainHalf: 34,
+    islandRadius: 26.6,   // mean reference
     waveDirections: ['north', 'south'],
-    waveSpawnZ: { south: -27, north: 27 },
+    waveSpawnZ: { south: -36, north: 36 },
     coastFn: function(angle) {
       // ⚠️ MUST match index.html MAPS.ile.coastFn exactly — see comment there.
       const a = angle;
-      return 19.0
-        - Math.sin(a) * 2.0
-        + Math.cos(a * 2 - 0.4) * 0.85
-        + Math.sin(a * 3) * 0.65
-        + Math.cos(a * 5 + 1.2) * 0.4
-        + Math.cos(a + 2.5) * 0.5;
+      return 25.2
+        - Math.sin(a) * 3.0
+        + Math.cos(a * 2 - 0.4) * 1.3
+        + Math.sin(a * 3) * 1.0
+        + Math.cos(a * 5 + 1.2) * 0.6
+        + Math.cos(a + 2.5) * 0.75;
     },
   },
 };
@@ -100,7 +100,7 @@ function createGameState(mapId, rng) {
   if (mapId === 'littoral') {
     numBuildings = 40 + Math.floor(rng() * 10); // 40-49
   } else {
-    numBuildings = 45 + Math.floor(rng() * 11); // 45-55
+    numBuildings = 55 + Math.floor(rng() * 16); // 55-70
   }
 
   const defeatFrac = 0.15; // default
@@ -398,7 +398,7 @@ const STRATEGIES = {
           const mapId = state.mapId;
           if (mapId === 'ile') {
             const angle = state.rng() * Math.PI * 2;
-            const r = state.rng() * 18;
+            const r = state.rng() * 25;
             x = Math.cos(angle) * r;
             z = Math.sin(angle) * r;
           } else {

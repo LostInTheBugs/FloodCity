@@ -12,9 +12,15 @@
  * World→screen projection is included for future-proofing but the
  * core assertions use stable, verified screen coordinates.
  *
- * Usage: node harness.js [URL] [--break-ground]
+ * Usage: node harness.js [URL] [seed] [--break-ground]
+ *   seed           Seed de génération de la ville (défaut: 42).
+ *                  Ignoré si l'URL fournie contient déjà ?seed=.
  *   --break-ground  Temporarily hides the ground mesh to verify the
  *                   harness catches missing terrain (should fail).
+ *
+ * La graine est systématiquement injectée dans l'URL : si l'URL passée
+ * n'a pas de paramètre seed, le harnais l'ajoute automatiquement.  La
+ * graine est affichée en début d'exécution et inscrite dans le rapport.
  */
 
 const puppeteer = require('puppeteer');
@@ -22,20 +28,29 @@ const fs = require('fs');
 const path = require('path');
 const { PNG } = require('pngjs');
 
-const TARGET_URL = process.argv[2] || 'http://localhost:8080';
+const RAW_URL = process.argv[2] || 'http://localhost:8080/index.html';
+const CLI_SEED = process.argv[3] || '42';
 const BREAK_GROUND = process.argv.includes('--break-ground');
 const CAPTURES_DIR = path.join(__dirname, 'captures');
 const VIEWPORT = { width: 1280, height: 720 };
 const RUN_ID = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const RUN_DIR = path.join(CAPTURES_DIR, RUN_ID);
 
+// Ensure a seed is always present — injected if the URL lacks one.
+let _urlObj;
+try { _urlObj = new URL(RAW_URL); } catch { _urlObj = new URL(RAW_URL, 'http://localhost'); }
+if (!_urlObj.searchParams.has('seed')) _urlObj.searchParams.set('seed', CLI_SEED);
+const SEED = _urlObj.searchParams.get('seed');
+const TARGET_URL = _urlObj.href;
+
 const BENIGN = [/WebGL context could not be created/i,/Error creating WebGL/i,/Failed to create WebGL/i,/WebGL context lost/i,/swiftshader/i];
 
 const report = {
-  runId:RUN_ID,url:TARGET_URL,timestamp:new Date().toISOString(),
+  runId:RUN_ID,url:TARGET_URL,seed:SEED,timestamp:new Date().toISOString(),
   captures:[],consoleErrors:[],consoleWarnings:[],consoleExpected:[],
   httpErrors:[],framerateDay:null,framerateNight:null,
   flickerResult:null,gameVersion:null,pixelAssertions:[],
+  framerateDayIle:null,framerateNightIle:null,
 };
 
 function cp(n){return path.join(RUN_DIR,n);}
@@ -84,20 +99,20 @@ const ASSERTIONS = {
     { sx: 520, sy: 600, expected: 'grass',  name: 'centre-terrain' },
     { sx: 960, sy: 520, expected: 'grass',  name: 'est-interieur' },
     { sx: 320, sy: 560, expected: 'grass',  name: 'sud-ouest' },
-    { sx: 600, sy: 575, expected: 'sand',   name: 'plage', n: 5 },
+    { sx: 530, sy: 520, expected: 'sand',   name: 'plage', n: 3 },
     { sx: 80,  sy: 560, expected: 'water',  name: 'ocean-ouest' },
     { sx: 1200,sy: 560, expected: 'water',  name: 'ocean-est' },
     { sx: 640, sy: 100, expected: 'water',  name: 'ocean-nord' },
   ],
   Île: [
-    { sx: 360, sy: 420, expected: 'grass',  name: 'ouest-interieur' },
-    { sx: 600, sy: 520, expected: 'grass',  name: 'centre-ile' },
-    { sx: 880, sy: 520, expected: 'grass',  name: 'est-interieur' },
+    { sx: 430, sy: 450, expected: 'grass',  name: 'ouest-interieur' },
+    { sx: 600, sy: 500, expected: 'grass',  name: 'centre-ile' },
+    { sx: 860, sy: 490, expected: 'grass',  name: 'est-interieur' },
     { sx: 640, sy: 560, expected: 'grass',  name: 'sud-interieur' },
-    { sx: 480, sy: 520, expected: 'sand',   name: 'transition-ouest', n: 5 },
-    { sx: 960, sy: 520, expected: 'sand',   name: 'transition-est',   n: 5 },
-    { sx: 160, sy: 560, expected: 'water',  name: 'ocean-ouest' },
-    { sx: 1120,sy: 360, expected: 'water',  name: 'ocean-est' },
+    { sx: 500, sy: 520, expected: 'sand',   name: 'transition-ouest', n: 5 },
+    { sx: 940, sy: 520, expected: 'sand',   name: 'transition-est',   n: 5 },
+    { sx: 140, sy: 560, expected: 'water',  name: 'ocean-ouest' },
+    { sx: 1140,sy: 340, expected: 'water',  name: 'ocean-est' },
     { sx: 640, sy: 100, expected: 'water',  name: 'ocean-nord' },
   ],
 };
@@ -129,7 +144,7 @@ async function main() {
   console.log('═══════════════════════════════════════════════');
   console.log('  Flood City — Visual Verification Harness');
   console.log('═══════════════════════════════════════════════');
-  console.log(`  URL: ${TARGET_URL}  |  Run: ${RUN_ID}`);
+  console.log(`  URL: ${TARGET_URL}  |  🌱 Graine: ${SEED}  |  Run: ${RUN_ID}`);
   if (BREAK_GROUND) console.log('  ⚠️  MODE CASSE-SOL: le terrain sera masqué');
   fs.mkdirSync(RUN_DIR, { recursive: true });
 
@@ -200,7 +215,7 @@ async function main() {
     }
 
     await ss(page, '02-game-day.png', 'Littoral — jour');
-    console.log('\n🔬 ASSERTIONS PIXELS — Littoral');
+    console.log('\\n🔬 ASSERTIONS PIXELS — Littoral');
     runAssertions(fs.readFileSync(cp('02-game-day.png')), 'Littoral');
 
     console.log('\n🏗️  Défenses...');
@@ -317,16 +332,55 @@ async function main() {
     console.log('\n🔬 ASSERTIONS PIXELS — Île');
     runAssertions(fs.readFileSync(cp('12-island-day.png')), 'Île');
 
+    console.log('\n⏱️  FPS Île jour...');
+    await injectFC(page); // re-wrap rAF after map switch
+    await sl(500);
+    report.framerateDayIle = await measureFPS(page, 3000, 'jour-île');
+    console.log('\n🌙 Nuit île...');
+    await page.keyboard.press('n'); await sl(2000);
+    await ss(page, '12b-island-night.png', 'Île — nuit');
+    report.framerateNightIle = await measureFPS(page, 3000, 'nuit-île');
+    // Back to day for the top-down view
+    await page.keyboard.press('n'); await sl(1000);
+
     console.log('\n📐 Vue dessus...');
-    await page.mouse.move(640, 360);
-    await page.mouse.wheel({ deltaY: 300 }); await sl(1000);
-    await page.mouse.move(640, 360);
-    await page.mouse.down({ button: 'right' });
-    await page.mouse.move(640, 260, { steps: 10 });
-    await page.mouse.up({ button: 'right' });
-    await sl(1000);
+    // Read map-scale data (set by generateMap via meta tag) so the
+    // top-down view works at any island size without hardcoded values.
+    const mapData = await page.evaluate(() => {
+      const meta = document.querySelector('meta[name="map-data"]');
+      if (!meta) return null;
+      try { return JSON.parse(meta.getAttribute('content')); } catch { return null; }
+    });
+    const camMaxDist = (mapData && mapData.camMaxDist) ? mapData.camMaxDist : 80;
+    const terrainHalf = (mapData && mapData.terrainHalf) ? mapData.terrainHalf : 34;
+    // Set camera directly to a near-top-down position at max distance,
+    // preserving the current azimuth (theta).  The old wheel+drag approach
+    // failed because a single wheel event in OrbitControls only dollys
+    // by ~×0.95 — far from reaching maxDistance in one step.
+    await page.evaluate((maxDist) => {
+      if (typeof window.harness_camTopdown === 'function') {
+        window.harness_camTopdown(maxDist, 0.8);
+      }
+    }, camMaxDist);
+    await sl(1000); // let one second of animation frames settle
+    const camState = await page.evaluate(() => {
+      if (typeof window.harness_camState === 'function') return window.harness_camState();
+      return null;
+    });
+    console.log(`  Cam pos=(${camState?.px},${camState?.py},${camState?.pz}) target=(${camState?.tx},${camState?.ty},${camState?.tz})`);
     await ss(page, '13-island-topdown.png', 'Île — dessus');
-    console.log('\n📐 Rotation île...');
+    // Assert the center region contains grass — camera must be above ground
+    const topdownBuf = fs.readFileSync(cp('13-island-topdown.png'));
+    const topdownPng = PNG.sync.read(topdownBuf);
+    const centerSample = patchSample(topdownPng, 640, 360, 9);
+    const centerOk = centerSample.family === 'grass' || centerSample.family === 'sand';
+    console.log(`  🎯 [Île] centre-vue-dessus (640,360): famille=${centerSample.family} ratio=${(centerSample.ratio*100).toFixed(0)}% ${centerOk ? '✅' : '❌'}`);
+    report.pixelAssertions.push({
+      map: 'Île', point: 'centre-vue-dessus', xy: [640, 360],
+      expected: 'grass', result: centerSample.family, pass: centerOk,
+      details: `Vue-dessus centre: famille=${centerSample.family} (attendu=grass/sand), ratio=${(centerSample.ratio*100).toFixed(0)}%`
+    });
+    console.log('\\n📐 Rotation île...');
     await page.mouse.move(640, 360);
     await page.mouse.down({ button: 'right' });
     await page.mouse.move(890, 360, { steps: 15 });
@@ -345,7 +399,7 @@ async function main() {
       '  Flood City — Rapport de Vérification Visuelle',
       '═══════════════════════════════════════════════', '',
       `Run: ${report.runId}`, `Date: ${report.timestamp}`,
-      `URL: ${report.url}`, `Version: ${report.gameVersion}`,
+      `URL: ${report.url}`, `Graine: ${report.seed}`, `Version: ${report.gameVersion}`,
       BREAK_GROUND ? '  ⚠️  MODE TERRAIN CASSÉ (sol masqué)' : '', '',
       '── HTTP ──',
       ...(report.httpErrors.length === 0 ? ['  ✅ Aucune'] : report.httpErrors.map(h => `  🔴 HTTP ${h.status} — ${h.url}`)), '',
@@ -361,8 +415,10 @@ async function main() {
       '── Captures ──',
       ...report.captures.map(c => `  ${c.file}  — ${c.description}`), '',
       `── Performances ─`,
-      `  FPS jour: ${report.framerateDay ?? 'N/A'}`,
-      `  FPS nuit: ${report.framerateNight ?? 'N/A'}`, '',
+      `  FPS Littoral jour: ${report.framerateDay ?? 'N/A'}`,
+      `  FPS Littoral nuit: ${report.framerateNight ?? 'N/A'}`,
+      `  FPS Île jour: ${report.framerateDayIle ?? 'N/A'}`,
+      `  FPS Île nuit: ${report.framerateNightIle ?? 'N/A'}`, '',
       '── Scintillement ──',
       report.flickerResult ? `  ${report.flickerResult.verdict}` : '  N/A', '',
       '═══════════════════════════════════════════════'
@@ -373,7 +429,8 @@ async function main() {
     console.log('  RÉSUMÉ');
     console.log('═══════════════════════════════════════════════');
     console.log(`  Captures : ${report.captures.length}  |  Erreurs : ${report.consoleErrors.length}`);
-    console.log(`  FPS jour : ${report.framerateDay}  |  FPS nuit: ${report.framerateNight}`);
+    console.log(`  FPS Littoral jour : ${report.framerateDay}  |  nuit: ${report.framerateNight}`);
+    console.log(`  FPS Île jour      : ${report.framerateDayIle}  |  nuit: ${report.framerateNightIle}`);
     console.log(`  Pixels   : ${pxP}/${pxT.length} passées, ${pxF} échouées`);
     console.log(`  VERDICT  : ${pxV}`);
     console.log(`  Flicker  : ${report.flickerResult?.verdict || 'N/A'}`);

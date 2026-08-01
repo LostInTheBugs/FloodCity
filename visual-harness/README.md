@@ -34,9 +34,29 @@ python3 -m http.server 8080
 
 # 2. Lancer le harnais
 cd visual-harness
-node harness.js [URL]
+node harness.js [URL] [graine]
 
-# URL par défaut : http://localhost:8080
+# URL par défaut : http://localhost:8080/index.html
+# Graine par défaut : 42
+```
+
+### Graine de génération
+
+Le harnais **utilise toujours une graine** pour garantir la reproductibilité
+des assertions de pixels. Sans cela, deux exécutions sur des villes
+différentes donneraient des verdicts différents, ce qui est un piège.
+
+- Si l'URL fournie contient déjà `?seed=...`, cette graine est utilisée.
+- Sinon, le harnais ajoute automatiquement `?seed=N` à l'URL, avec `N = 42`
+  par défaut.
+- La graine est affichée en début d'exécution et inscrite dans le rapport.
+
+```bash
+# Exemples :
+node harness.js                                    # seed=42 (défaut)
+node harness.js http://127.0.0.1:8099/index.html   # seed=42 (injecté)
+node harness.js http://127.0.0.1:8099/index.html 99 # seed=99
+node harness.js http://localhost:8080/index.html?seed=7  # seed=7 (respecté)
 ```
 
 ### Tester la production

@@ -198,6 +198,21 @@ La graine contrôle la disposition de la ville, des bâtiments, du mobilier urba
 
 > **Rappel :** le fichier `version.json` doit être déployé avec `index.html` et porter la même version que `GAME_VERSION`.
 
+## Development cost (LLM)
+
+This project was built entirely through AI-assisted sessions (Hermes Agent, deepseek-v4-pro / deepseek-v4-flash). Usage so far (cumulative as of 2026-08-02):
+
+| Metric | Value |
+|---|---|
+| Input tokens | 4 171 727 |
+| Output tokens | 2 057 197 |
+| **Total (input + output)** | **6 228 924** |
+| Cache read (reused at reduced price) | 358 662 144 |
+| API calls | 4 206 |
+| **Estimated cost** | **≈ 4.26 USD** |
+
+Full breakdown: [TOKENS.md](TOKENS.md).
+
 ## 📝 Repo
 
 https://github.com/LostInTheBugs/FloodCity — [Releases](https://github.com/LostInTheBugs/FloodCity/releases)
